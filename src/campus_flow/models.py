@@ -85,7 +85,7 @@ class TicketValidator:
             try:
                 val = int(s)
             except (ValueError, TypeError):
-                raise ValueError("Affected users must be a positive integer.")
+                raise ValueError("Affected users must be a positive numbers.")
         else:
             try:
                 val = int(affected_users)
