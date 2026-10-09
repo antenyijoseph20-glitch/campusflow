@@ -28,8 +28,8 @@ def test_manager_assign_ticket(tmp_path):
     with pytest.raises(ValueError, match="Staff member name must not be empty"):
         manager.assign_ticket(t.id, "   ")
 
-    updated = manager.assign_ticket(t.id, "Alice Smith")
-    assert updated.assigned_to == "Alice Smith"
+    updated = manager.assign_ticket(t.id, "Alice Smiths")
+    assert updated.assigned_to == "Alice Smiths"
 
 
 def test_workflow_state_machine(tmp_path):
