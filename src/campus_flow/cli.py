@@ -6,6 +6,16 @@ class CLI:
     def __init__(self):
         self.manager = TicketManager()
 
+    def _get_required_input(self, prompt):
+        """Keep asking until the user provides a non-empty value."""
+        while True:
+            value = input(prompt).strip()
+
+            if value:
+                return value
+
+            print("Error: Invalid input. This field cannot be empty.")
+
     def run(self):
         print("========================================")
         print("     Welcome to CampusFlow CLI          ")
