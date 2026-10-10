@@ -1,3 +1,4 @@
+
 from typing import List, Optional, Dict, Any
 
 from campus_flow.models import Ticket, TicketValidator, IDGenerator
@@ -12,6 +13,17 @@ class TicketManager:
     def save(self) -> None:
         StorageHandler.save_tickets(self.tickets, self.filepath)
 
+    def _set_status_and_save(self, ticket: Ticket, new_status: str) -> None:
+        """Restore the previous status if persistence fails."""
+        previous_status = ticket.status
+        ticket.status = new_status
+
+        try:
+            self.save()
+        except Exception:
+            ticket.status = previous_status
+            raise
+
     # F1 — CREATE
     def create_ticket(
         self,
@@ -21,18 +33,18 @@ class TicketManager:
         affected_users: int,
     ) -> Ticket:
         clean_title = TicketValidator.validate_title(title)
-        clean_cat = TicketValidator.normalize_category(category)
-        clean_urg = TicketValidator.normalize_urgency(urgency)
+        clean_category = TicketValidator.normalize_category(category)
+        clean_urgency = TicketValidator.normalize_urgency(urgency)
         clean_users = TicketValidator.validate_affected_users(affected_users)
 
-        priority = TicketValidator.calculate_priority(clean_urg, clean_users)
+        priority = TicketValidator.calculate_priority(clean_urgency, clean_users)
         ticket_id = IDGenerator.generate_next_id(self.tickets)
 
         new_ticket = Ticket(
             id=ticket_id,
             title=clean_title,
-            category=clean_cat,
-            urgency=clean_urg,
+            category=clean_category,
+            urgency=clean_urgency,
             affected_users=clean_users,
             priority=priority,
             status="open",
@@ -109,7 +121,6 @@ class TicketManager:
                 "Allowed: open, in_progress, resolved."
             )
 
-        # An unchanged status is a harmless no-op.
         if target_status == ticket.status and not reopen:
             return ticket
 
@@ -121,16 +132,16 @@ class TicketManager:
             if target_status != "open":
                 raise ValueError("Explicit reopen must set status to 'open'.")
 
-            self._change_status_safely(ticket, "open")
+            self._set_status_and_save(ticket, "open")
             return ticket
 
-        # A resolved ticket must be explicitly reopened first.
+        # Resolved tickets must be explicitly reopened first.
         if ticket.status == "resolved":
             raise ValueError(
                 "A resolved ticket may only be modified after an explicit reopen."
             )
 
-        # Enforce: open -> in_progress -> resolved.
+
         allowed_transitions = {
             "open": {"in_progress"},
             "in_progress": {"resolved"},
@@ -149,21 +160,10 @@ class TicketManager:
                     "Assign it first."
                 )
 
-        self._change_status_safely(ticket, target_status)
+        self._set_status_and_save(ticket, target_status)
         return ticket
 
-    def _change_status_safely(self, ticket: Ticket, new_status: str) -> None:
-        """Restore the previous status if persistence fails."""
-        previous_status = ticket.status
-        ticket.status = new_status
 
-        try:
-            self.save()
-        except Exception:
-            ticket.status = previous_status
-            raise
-
-    # F5 — WORK QUEUE
     def get_work_queue(self) -> List[Ticket]:
         unresolved = [
             ticket
@@ -193,13 +193,11 @@ class TicketManager:
     # F6 — REPORTS
     def get_reports(self) -> Dict[str, Any]:
         total = len(self.tickets)
-
         status_counts = {
             "open": 0,
             "in_progress": 0,
             "resolved": 0,
         }
-
         priority_counts = {
             "critical": 0,
             "high": 0,
