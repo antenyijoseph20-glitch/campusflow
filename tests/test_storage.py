@@ -85,3 +85,44 @@ def test_storage_malformed_json(tmp_path):
 def test_storage_missing_file():
     loaded = StorageHandler.load_tickets("nonexistent_tickets_file_12345.json")
     assert loaded == []
+
+@pytest.mark.parametrize(
+    "invalid_ticket",
+    [
+        {
+            "id": "T001",
+            "title": "Wi-Fi issue",
+            "category": "Unknown",
+            "urgency": "high",
+            "affected_users": 5,
+            "priority": "high",
+            "status": "open",
+        },
+        {
+            "id": "T001",
+            "title": "Wi-Fi issue",
+            "category": "Network",
+            "urgency": "urgent",
+            "affected_users": 5,
+            "priority": "high",
+            "status": "open",
+        },
+        {
+            "id": "T001",
+            "title": "Wi-Fi issue",
+            "category": "Network",
+            "urgency": "high",
+            "affected_users": 5,
+            "priority": "high",
+            "status": "unknown",
+        },
+    ],
+)
+def test_storage_rejects_invalid_ticket_values(tmp_path, invalid_ticket):
+    import json
+
+    bad_file = tmp_path / "invalid_ticket_values.json"
+    bad_file.write_text(json.dumps([invalid_ticket]), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="Invalid ticket data at index 0"):
+        StorageHandler.load_tickets(str(bad_file))
