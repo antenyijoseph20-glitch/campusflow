@@ -259,7 +259,7 @@ The following improvements may be considered as CampusFlow evolves. They are not
 
 Future changes should be driven by demonstrated needs and introduced incrementally, with appropriate tests and documentation.
 
-## Contributing
+## Contributing.
 
 Contributions, code reviews, and suggestions are welcome.
 
@@ -277,7 +277,6 @@ python -m pytest -v
 python -m compileall -q src tests
 git diff --check
 ```
-
 Keep pull request descriptions accurate and identify any untested behavior.
 
 ## License
