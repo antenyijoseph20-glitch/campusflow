@@ -48,10 +48,7 @@ The project is also a practical demonstration of Python application design, obje
 ## Technology Stack
 
 | Technology | Purpose |
-|---|---|
-| Python 3.12 | Application language |
 | JSON | Local ticket data persistence |
-| pytest | Automated testing |
 | Git and GitHub | Version control and collaboration |
 
 ## Project Structure
