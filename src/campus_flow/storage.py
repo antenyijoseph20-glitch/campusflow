@@ -1,107 +1,67 @@
 import json
 import os
-import tempfile
-from typing import List
 
-from campus_flow.models import Ticket
+class StorageManager:
+    """Handles safe, atomic JSON file persistence and schema validation."""
 
+    def __init__(self, filepath="tickets.json"):
+        self.filepath = filepath
 
-class StorageHandler:
-    @staticmethod
-    def load_tickets(filepath: str = "tickets.json") -> List[Ticket]:
-        if not os.path.exists(filepath):
+    def load_tickets(self, silent=False):
+        """Loads and validates tickets from disk. Rejects corrupted data without crashing."""
+        if not os.path.exists(self.filepath):
             return []
-
+        
         try:
-            with open(filepath, "r", encoding="utf-8") as file:
-                content = file.read()
-        except OSError as exc:
-            raise RuntimeError(
-                f"Failed to read tickets from '{filepath}': {exc}"
-            ) from exc
+            with open(self.filepath, "r", encoding="utf-8") as f:
+                content = f.read().strip()
+                if not content:
+                    return []
+                
+                data = json.loads(content)
+                # Edge case: JSON root must be a list
+                if not isinstance(data, list):
+                    if not silent:
+                        print("Error: JSON root is not a list. Load rejected.")
+                    return None
+                
+                # Edge case: Check for duplicate IDs during load
+                validated_tickets = []
+                seen_ids = set()
+                for t in data:
+                    if not isinstance(t, dict):
+                        return None
+                    t_id = t.get("id")
+                    if not t_id or t_id in seen_ids:
+                        if not silent:
+                            print(f"Error: Duplicate or missing ID '{t_id}' detected. Load rejected.")
+                        return None
+                    seen_ids.add(t_id)
+                    validated_tickets.append(t)
 
-        if not content.strip():
-            return []
+                return validated_tickets
+        except json.JSONDecodeError as e:
+            if not silent:
+                print(f"Error: Malformed JSON syntax ({e}). Memory preserved.")
+            return None
+        except Exception as e:
+            if not silent:
+                print(f"Unexpected storage error: {e}")
+            return None
 
+    def save_tickets(self, tickets):
+        """Atomic write: writes to a temporary file first, then replaces target to prevent corruption."""
+        temp_filepath = self.filepath + ".tmp"
         try:
-            data = json.loads(content)
-        except json.JSONDecodeError as exc:
-            raise ValueError(
-                f"Malformed JSON detected in '{filepath}'. "
-                "The file will not be overwritten automatically. "
-                f"Error: {exc}"
-            ) from exc
-
-        if not isinstance(data, list):
-            raise ValueError(
-                f"Invalid storage format in '{filepath}': "
-                "root must be a list of tickets."
-            )
-
-        tickets = []
-
-        for index, item in enumerate(data):
-            if not isinstance(item, dict):
-                raise ValueError(
-                    f"Invalid ticket entry at index {index} in "
-                    f"'{filepath}': each entry must be a JSON object."
-                )
-
-            try:
-                ticket = Ticket.from_dict(item)
-            except (KeyError, TypeError, ValueError) as exc:
-                raise ValueError(
-                    f"Invalid ticket data at index {index} in "
-                    f"'{filepath}': {exc}"
-                ) from exc
-
-            tickets.append(ticket)
-
-        return tickets
-
-    @staticmethod
-    def save_tickets(
-        tickets: List[Ticket],
-        filepath: str = "tickets.json",
-    ) -> None:
-        temporary_path = None
-
-        try:
-            data = [ticket.to_dict() for ticket in tickets]
-
-            # Use the same directory so replacement stays on the same filesystem.
-            directory = os.path.dirname(os.path.abspath(filepath))
-            filename = os.path.basename(filepath)
-
-            with tempfile.NamedTemporaryFile(
-                mode="w",
-                encoding="utf-8",
-                dir=directory,
-                prefix=f".{filename}.",
-                suffix=".tmp",
-                delete=False,
-            ) as temporary_file:
-                temporary_path = temporary_file.name
-
-                json.dump(data, temporary_file, indent=4)
-                temporary_file.write("\n")
-                temporary_file.flush()
-                os.fsync(temporary_file.fileno())
-
-            # Replace the original only after the temporary file is complete.
-            os.replace(temporary_path, filepath)
-            temporary_path = None
-
-        except Exception as exc:
-            raise RuntimeError(
-                f"Failed to save tickets to '{filepath}': {exc}"
-            ) from exc
-
-        finally:
-            if temporary_path is not None:
+            with open(temp_filepath, "w", encoding="utf-8") as f:
+                json.dump(tickets, f, indent=4)
+            os.replace(temp_filepath, self.filepath)
+            return True
+        except Exception as e:
+            print(f"Error saving tickets atomically: {e}")
+            if os.path.exists(temp_filepath):
                 try:
-                    os.remove(temporary_path)
-                except FileNotFoundError:
+                    os.remove(temp_filepath)
+                except:
                     pass
-                except OSError:
-                    pass
+            return False
