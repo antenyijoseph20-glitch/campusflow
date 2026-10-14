@@ -1,4 +1,4 @@
-from storage import StorageManager
+from campus_flow.storage import StorageManager
 
 class TicketManager:
     """Core business logic for ticket creation, validation, workflow, and notes."""
@@ -104,7 +104,9 @@ class TicketManager:
         }
 
         self.tickets.append(new_ticket)
-        self._sync()
+        if not self._sync():
+            self.tickets.pop()
+            return False, "Error: Could not save ticket. Change rolled back."
         return True, f"Success! Created ticket {ticket_id} with priority '{priority}'."
 
     def assign_ticket(self, ticket_id, staff_name):
@@ -119,8 +121,11 @@ class TicketManager:
         if ticket["status"] == "resolved":
             return False, "Error: Cannot assign a resolved ticket."
 
+        previous_assignee = ticket["assigned_to"]
         ticket["assigned_to"] = staff_name.strip()
-        self._sync()
+        if not self._sync():
+            ticket["assigned_to"] = previous_assignee
+            return False, "Error: Could not save assignment. Change rolled back."
         return True, f"Success! Ticket {ticket['id']} assigned to {ticket['assigned_to']}."
 
     def update_workflow(self, ticket_id, new_status):
@@ -143,8 +148,11 @@ class TicketManager:
         if norm_status == "in_progress" and ticket["assigned_to"] is None:
             return False, "Error: Cannot move an unassigned ticket into 'in_progress'."
 
+        previous_status = ticket["status"]
         ticket["status"] = norm_status
-        self._sync()
+        if not self._sync():
+            ticket["status"] = previous_status
+            return False, "Error: Could not save status change. Change rolled back."
         return True, f"Success! Ticket status updated to '{norm_status}'."
 
     def add_note(self, ticket_id, author, message):
@@ -174,5 +182,20 @@ class TicketManager:
         }
 
         notes_list.append(new_note)
-        self._sync()
+        if not self._sync():
+            notes_list.pop()
+            return False, "Error: Could not save note. Change rolled back."
         return True, f"Success! Added note {note_id}."
+
+    def get_work_queue(self):
+        """Unresolved tickets ordered by priority weight, then numeric ID."""
+        priority_weights = {"critical": 0, "high": 1, "medium": 2, "low": 3}
+        unresolved = [t for t in self.tickets if t["status"] in ("open", "in_progress")]
+
+        def sort_key(ticket):
+            weight = priority_weights.get(ticket.get("priority"), 4)
+            raw_id = ticket.get("id", "")
+            numeric_id = int(raw_id[1:]) if raw_id[1:].isdigit() else 0
+            return weight, numeric_id
+
+        return sorted(unresolved, key=sort_key)
