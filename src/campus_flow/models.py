@@ -1,214 +1,178 @@
-from dataclasses import dataclass
-from typing import Any, Dict, List, Optional
+from storage import StorageManager
 
-
-@dataclass
-class Ticket:
-    """Represent an IT support ticket."""
-
-    id: str
-    title: str
-    category: str
-    urgency: str
-    affected_users: int
-    priority: str
-    status: str = "open"
-    assigned_to: Optional[str] = None
-
-    def to_dict(self) -> Dict[str, Any]:
-        """Convert a ticket into a dictionary for JSON persistence."""
-        return {
-            "id": self.id,
-            "title": self.title,
-            "category": self.category,
-            "urgency": self.urgency,
-            "affected_users": self.affected_users,
-            "priority": self.priority,
-            "status": self.status,
-            "assigned_to": self.assigned_to,
-        }
-
-    @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "Ticket":
-        """Create a validated ticket from stored dictionary data."""
-        if not isinstance(data, dict):
-            raise ValueError("Ticket data must be a dictionary.")
-
-        required_fields = (
-            "id",
-            "title",
-            "category",
-            "urgency",
-            "affected_users",
-            "priority",
-        )
-
-        missing = [field for field in required_fields if field not in data]
-        if missing:
-            raise ValueError(
-                f"Missing required ticket fields: {', '.join(missing)}"
-            )
-
-        ticket_id = data["id"]
-        if not isinstance(ticket_id, str) or not ticket_id.strip():
-            raise ValueError("Ticket ID must not be blank.")
-
-        title = TicketValidator.validate_title(data["title"])
-        category = TicketValidator.normalize_category(data["category"])
-        urgency = TicketValidator.normalize_urgency(data["urgency"])
-        affected_users = TicketValidator.validate_affected_users(
-            data["affected_users"]
-        )
-        priority = data["priority"]
-
-        expected_priority = TicketValidator.calculate_priority(
-            urgency, affected_users
-        )
-        if priority != expected_priority:
-            raise ValueError("Ticket priority does not match its urgency and affected users.")
-
-        status = TicketValidator.validate_status(data.get("status", "open"))
-
-        assigned_to = data.get("assigned_to")
-        if assigned_to is not None:
-            if not isinstance(assigned_to, str) or not assigned_to.strip():
-                raise ValueError("Assigned staff name must be a non-empty string or None.")
-            assigned_to = assigned_to.strip()
-
-        return cls(
-            id=ticket_id.strip(),
-            title=title,
-            category=category,
-            urgency=urgency,
-            affected_users=affected_users,
-            priority=priority,
-            status=status,
-            assigned_to=assigned_to,
-        )
-
-
-class TicketValidator:
-    """Validate and normalize ticket input."""
+class TicketManager:
+    """Core business logic for ticket creation, validation, workflow, and notes."""
 
     VALID_CATEGORIES = {"Network", "Hardware", "Software", "Other"}
     VALID_URGENCIES = {"low", "medium", "high"}
     VALID_STATUSES = {"open", "in_progress", "resolved"}
 
-    @staticmethod
-    def validate_title(title: str) -> str:
-        if not isinstance(title, str) or not title.strip():
-            raise ValueError("Title must not be blank.")
-        return title.strip()
+    def __init__(self, filepath="tickets.json", silent_load=False):
+        self.storage = StorageManager(filepath)
+        loaded = self.storage.load_tickets(silent=silent_load)
+        # If load failed due to corruption/duplicates, fallback to empty list to protect memory
+        self.tickets = loaded if loaded is not None else []
 
-    @staticmethod
-    def normalize_category(category: str) -> str:
-        if not isinstance(category, str) or not category.strip():
-            raise ValueError("Category must not be blank.")
+    def _sync(self):
+        """Persist current state to disk."""
+        return self.storage.save_tickets(self.tickets)
 
-        normalized = category.strip().lower()
-        for valid_category in TicketValidator.VALID_CATEGORIES:
-            if normalized == valid_category.lower():
-                return valid_category
+    def list_all_tickets(self):
+        """Return raw list of all tickets."""
+        return self.tickets
 
-        allowed = ", ".join(sorted(TicketValidator.VALID_CATEGORIES))
-        raise ValueError(f"Invalid category. Choose from: {allowed}.")
+    def get_ticket(self, ticket_id):
+        """Retrieve a ticket by ID (case-insensitive lookup)."""
+        if not ticket_id:
+            return None
+        clean_id = ticket_id.strip().upper()
+        for t in self.tickets:
+            if t["id"] == clean_id:
+                return t
+        return None
 
-    @staticmethod
-    def normalize_urgency(urgency: str) -> str:
-        if not isinstance(urgency, str) or not urgency.strip():
-            raise ValueError("Urgency must not be blank.")
+    def _generate_id(self):
+        """Generate next sequential ID (T001, T002...)."""
+        if not self.tickets:
+            return "T001"
+        max_num = 0
+        for t in self.tickets:
+            t_id = t.get("id", "")
+            if t_id.startswith("T") and t_id[1:].isdigit():
+                num = int(t_id[1:])
+                if num > max_num:
+                    max_num = num
+        return f"T{max_num + 1:03d}"
 
-        normalized = urgency.strip().lower()
-        if normalized not in TicketValidator.VALID_URGENCIES:
-            allowed = ", ".join(sorted(TicketValidator.VALID_URGENCIES))
-            raise ValueError(f"Invalid urgency. Choose from: {allowed}.")
-
-        return normalized
-
-    @staticmethod
-    def validate_status(status: str) -> str:
-        if not isinstance(status, str) or not status.strip():
-            raise ValueError("Status must not be blank.")
-
-        normalized = status.strip().lower()
-        if normalized not in TicketValidator.VALID_STATUSES:
-            allowed = ", ".join(sorted(TicketValidator.VALID_STATUSES))
-            raise ValueError(f"Invalid status. Choose from: {allowed}.")
-
-        return normalized
-
-    @staticmethod
-    def validate_affected_users(affected_users: Any) -> int:
-        """Accept positive integers and digit-only strings, but reject decimals and booleans."""
-        if isinstance(affected_users, bool):
-            raise ValueError(
-                "Affected users must be a positive integer, not a boolean."
-            )
-
-        if isinstance(affected_users, float):
-            raise ValueError(
-                "Affected users must be an integer, not a decimal."
-            )
-
-        if isinstance(affected_users, int):
-            number = affected_users
-
-        elif isinstance(affected_users, str):
-            value = affected_users.strip()
-
-            if not value:
-                raise ValueError("Affected users must be a positive integer.")
-
-            if "." in value:
-                raise ValueError(
-                    "Affected users must be an integer, not a decimal."
-                )
-
-            if not value.isdigit():
-                raise ValueError("Affected users must be a positive integer.")
-
-            number = int(value)
-
+    def calculate_priority(self, urgency, affected_users):
+        """Rule precedence: critical when high & >=10 users; high when high or >=10; medium when medium or >=3; else low."""
+        if urgency == "high" and affected_users >= 10:
+            return "critical"
+        elif urgency == "high" or affected_users >= 10:
+            return "high"
+        elif urgency == "medium" or affected_users >= 3:
+            return "medium"
         else:
-            raise ValueError("Affected users must be a positive integer.")
+            return "low"
 
-        if number <= 0:
-            raise ValueError(
-                "Affected users must be a positive integer greater than zero."
-            )
+    def create_ticket(self, title, category, urgency, affected_users):
+        """Strict validation before mutation."""
+        if not title or not title.strip():
+            return False, "Error: Title must not be blank."
 
-        return number
+        # Category validation (case-insensitive matching)
+        normalized_cat = None
+        for cat in self.VALID_CATEGORIES:
+            if cat.lower() == category.strip().lower():
+                normalized_cat = cat
+                break
+        if not normalized_cat:
+            return False, f"Error: Invalid category. Choose from {list(self.VALID_CATEGORIES)}."
 
+        norm_urgency = urgency.strip().lower()
+        if norm_urgency not in self.VALID_URGENCIES:
+            return False, f"Error: Invalid urgency. Choose from {list(self.VALID_URGENCIES)}."
 
-    @staticmethod
-    def calculate_priority(urgency: str, affected_users: int) -> str:
-        normalized_urgency = TicketValidator.normalize_urgency(urgency)
-        count = TicketValidator.validate_affected_users(affected_users)
+        # CRITICAL BUG-HUNTER DEFENSE: Python bool is a subclass of int. Check bool explicitly first!
+        if isinstance(affected_users, bool):
+            return False, "Error: Affected users cannot be a boolean."
 
-        if normalized_urgency == "high":
-            return "critical" if count >= 10 else "high"
+        raw_str = str(affected_users).strip()
+        if "." in raw_str or "," in raw_str:
+            return False, "Error: Affected users must be an integer, not a decimal."
 
-        if normalized_urgency == "medium":
-            return "high" if count >= 15 else "medium"
+        try:
+            users_int = int(affected_users)
+            if users_int <= 0:
+                raise ValueError()
+        except (ValueError, TypeError):
+            return False, "Error: Affected users must be a positive integer greater than zero."
 
-        return "medium" if count >= 10 else "low"
+        ticket_id = self._generate_id()
+        priority = self.calculate_priority(norm_urgency, users_int)
 
+        new_ticket = {
+            "id": ticket_id,
+            "title": title.strip(),
+            "category": normalized_cat,
+            "urgency": norm_urgency,
+            "affected_users": users_int,
+            "priority": priority,
+            "status": "open",
+            "assigned_to": None,
+            "notes": []
+        }
 
-class IDGenerator:
-    """Generate sequential ticket IDs."""
+        self.tickets.append(new_ticket)
+        self._sync()
+        return True, f"Success! Created ticket {ticket_id} with priority '{priority}'."
 
-    @staticmethod
-    def generate_next_id(existing_tickets: List[Ticket]) -> str:
-        max_number = 0
+    def assign_ticket(self, ticket_id, staff_name):
+        """Assign ticket with resolved-lock guard."""
+        if not staff_name or not staff_name.strip():
+            return False, "Error: Staff name cannot be blank."
+        
+        ticket = self.get_ticket(ticket_id)
+        if not ticket:
+            return False, f"Error: Ticket ID '{ticket_id}' not found."
 
-        for ticket in existing_tickets:
-            ticket_id = getattr(ticket, "id", None)
+        if ticket["status"] == "resolved":
+            return False, "Error: Cannot assign a resolved ticket."
 
-            if (
-                isinstance(ticket_id, str)
-                and ticket_id.startswith("T")
-                and ticket_id[1:].isdigit()
-            ):
-                max_number = max(max_number, int(ticket_id[1:]))
+        ticket["assigned_to"] = staff_name.strip()
+        self._sync()
+        return True, f"Success! Ticket {ticket['id']} assigned to {ticket['assigned_to']}."
 
-        return f"T{max_number + 1:03d}"
+    def update_workflow(self, ticket_id, new_status):
+        """Workflow state machine: open -> in_progress -> resolved with strict guards."""
+        norm_status = new_status.strip().lower()
+        if norm_status not in self.VALID_STATUSES:
+            return False, "Error: Invalid status."
+
+        ticket = self.get_ticket(ticket_id)
+        if not ticket:
+            return False, f"Error: Ticket ID '{ticket_id}' not found."
+
+        current_status = ticket["status"]
+
+        # Resolved ticket lock guard
+        if current_status == "resolved" and norm_status != "open":
+            return False, "Error: Resolved tickets are locked and can only be modified by reopening."
+
+        # Unassigned ticket guard
+        if norm_status == "in_progress" and ticket["assigned_to"] is None:
+            return False, "Error: Cannot move an unassigned ticket into 'in_progress'."
+
+        ticket["status"] = norm_status
+        self._sync()
+        return True, f"Success! Ticket status updated to '{norm_status}'."
+
+    def add_note(self, ticket_id, author, message):
+        """Append structured follow-up note with per-ticket ID (N001, N002...)."""
+        ticket = self.get_ticket(ticket_id)
+        if not ticket:
+            return False, "Error: Ticket ID not found."
+
+        if ticket["status"] not in ("open", "in_progress"):
+            return False, "Error: Resolved tickets cannot accept new notes."
+
+        if not author or not author.strip():
+            return False, "Error: Note author cannot be blank."
+
+        cleaned_msg = message.strip() if message else ""
+        if not (5 <= len(cleaned_msg) <= 300):
+            return False, "Error: Note message must be between 5 and 300 characters."
+
+        notes_list = ticket.setdefault("notes", [])
+        next_num = len(notes_list) + 1
+        note_id = f"N{next_num:03d}"
+
+        new_note = {
+            "note_id": note_id,
+            "author": author.strip(),
+            "message": cleaned_msg
+        }
+
+        notes_list.append(new_note)
+        self._sync()
+        return True, f"Success! Added note {note_id}."
