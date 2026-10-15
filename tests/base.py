@@ -11,6 +11,11 @@ inherits a working import, and
 
 runs from a fresh clone that has not run ``pip install -e .``.
 
+Two directories go on the path, not one. ``src/`` is what makes ``campus_flow``
+importable. The repository root is what makes ``main.py`` importable, which
+``tests/test_main.py`` needs; ``python3 main.py`` reaches it because the working
+directory is on the path, and discovery puts ``tests/`` there instead.
+
 Installing the package is still the recommended setup. The insert happens ahead
 of anything installed, so the suite always exercises the working tree.
 """

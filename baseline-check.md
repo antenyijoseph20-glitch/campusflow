@@ -122,7 +122,8 @@ Run `python3 -m pip install -e .` first so that the application can find the
 `campus_flow` package under `src/`. The test command itself does not depend on
 that install: `unittest` does not read the `pythonpath` setting in
 `pyproject.toml`, so `tests/base.py` adds `src/` to the import path before any
-test module imports the package.
+test module imports the package, and the repository root alongside it so that
+`main.py` is importable without an install either.
 
 That setup cannot live in `tests/__init__.py`. Discovery with `-s tests` and no
 `-t` takes `tests/` as its top-level directory, so it walks the folder as plain

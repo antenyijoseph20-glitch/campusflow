@@ -69,7 +69,7 @@ The project is also a practical demonstration of Python application design, obje
 - **Safer file updates:** Use atomic file replacement when saving data.
 - **Failure handling:** Roll back the in-memory change when a save fails, so memory never diverges from disk.
 - **Engineering check:** A short multiple-choice quiz covering the rules the system enforces.
-- **Automated tests:** Test models, validation, storage, persistence, search, reporting, and workflow behavior.
+- **Automated tests:** Test models, validation, storage, persistence, search, reporting, workflow behavior, the CLI menu, and the entry point.
 
 ## Technology Stack
 
@@ -123,8 +123,9 @@ tracked by Git.
 - `cli.py` — Provides the command-line interface for interacting with the application.
 - `main.py` — Serves as the application entry point.
 - `tests/` — Contains the automated test suite, split by the module it exercises.
-  `base.py` holds the shared per-test isolation and the `src/` import bootstrap,
-  and is not itself collected as a test module.
+  `base.py` holds the shared per-test isolation and the import bootstrap that puts
+  `src/` and the repository root on the path, and is not itself collected as a
+  test module.
 - `baseline-check.md` — Records the initial audit, reproduced defects, and remediation.
 - `learning_note.md` — Quiz explanations and mentor discussion points.
 - `docs/design-decisions.md` — Records important technical decisions.
@@ -325,16 +326,17 @@ python3 -m unittest discover -s tests -q
 
 This works from a fresh clone, with or without `pip install -e .`. `unittest`
 does not read the `pythonpath` setting in `pyproject.toml`, and the `src/`
-layout would otherwise leave `campus_flow` unimportable, so the test module puts
-`src/` on the import path before importing the package. Discovery with
-`-s tests` and no `-t` treats `tests/` as the top-level directory, which means
-`tests/__init__.py` is never imported — the setup has to happen in the module
-itself.
+layout would otherwise leave `campus_flow` unimportable, so `tests/base.py` puts
+`src/` and the repository root on the import path before any test module imports
+the package. `src/` goes on first, so the suite always exercises the working tree
+rather than an installed copy. The repository root goes on so that `main.py` is
+importable the way `python3 main.py` reaches it. Discovery with `-s tests` and no
+`-t` treats `tests/` as the top-level directory, which means `tests/__init__.py`
+is never imported — the setup has to happen in a module discovery does load.
 
 Installing the package remains the recommended setup and is what the application
 needs; the bootstrap exists so the verification command is a single line with no
-prerequisite. Because it inserts `src/` ahead of anything installed, the suite
-always exercises the working tree rather than an installed copy.
+prerequisite.
 
 The suite is written with `unittest`; `pytest` is not required. If it is
 installed, the same tests also run under it, reading the source path from
@@ -434,7 +436,9 @@ The following improvements may be considered as CampusFlow evolves. They are not
 - Extend reporting and filtering where practical.
 - Evaluate database storage if concurrent access or data volume justifies it.
 - Consider authentication and role-based access control if multi-user support is introduced.
-- Add continuous integration and improve packaging and release workflows.
+- Improve packaging and release workflows. Continuous integration is no longer on
+  this list: `.github/workflows/checks.yml` runs the suite on Python 3.8 and 3.12,
+  and once more against an editable install.
 - Explore a web API or graphical interface if future requirements call for one.
 
 Future changes should be driven by demonstrated needs and introduced incrementally, with appropriate tests and documentation.
