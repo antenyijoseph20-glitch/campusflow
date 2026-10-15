@@ -1,0 +1,67 @@
+name: checks
+
+# These are the commands the README documents, run on a checkout that has not
+# been installed. The suite has to put src/ on the import path itself, so if
+# that bootstrap breaks, this job fails rather than the reader finding out.
+#
+# `git diff --check` is deliberately absent: on a clean checkout there is no
+# diff to check, so it would pass without testing anything. It stays a local
+# pre-commit step.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  unittest:
+    name: unittest (Python ${{ matrix.python-version }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # 3.12 is what the project is developed on.
+          - python-version: "3.12"
+            os: ubuntu-latest
+          # 3.8 is the floor pyproject.toml declares. Checked rather than
+          # assumed, so the README claim cannot drift. Older interpreter, so
+          # it runs on the older image.
+          - python-version: "3.8"
+            os: ubuntu-22.04
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Show the interpreter
+        run: python3 --version
+
+      - name: Run the test suite without installing anything
+        run: python3 -m unittest discover -s tests -v
+
+      - name: Compile sources and tests
+        run: python3 -m compileall -q src tests
+
+  installed:
+    name: editable install
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install the package
+        run: python3 -m pip install -e .
+
+      - name: Confirm it imports with no test bootstrap involved
+        run: python3 -c "import campus_flow; print('installed at', campus_flow.__file__)"
+
+      - name: Run the suite against the installed package
+        run: python3 -m unittest discover -s tests -v

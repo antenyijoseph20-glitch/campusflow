@@ -35,10 +35,16 @@ legal belongs to `TicketManager`, not to the storage layer.
 
 ## 4. Automated tests
 
-The suite lives in a single file, `tests/test_campusflow_next.py`, and covers
-the 16 required verification cases: 14 numbered cases plus two bug-hunter
-checks. Tests are grouped in one file because they share a manager and a
-temporary data file per test.
+The suite is split by the module it exercises — `test_models.py`,
+`test_storage.py`, `test_search_reports.py` and `test_quiz.py` — and covers the
+16 required verification cases: 14 numbered cases plus two bug-hunter checks.
+The case numbers in the test names are the contract, so they survive the split
+unchanged even though the tests now live in four files.
+
+`tests/base.py` holds what every test needs: the temporary directory and data
+file, the manager built over it, and the `src/` import bootstrap. Discovery
+matches `test*.py`, so `base.py` is imported by the test modules but never
+collected as one.
 
 Each test uses its own temporary directory, so no test data is written into the
 repository.
@@ -76,11 +82,14 @@ Every AI-produced artifact was verified by running it rather than by reading it:
 | Claim | How it was checked |
 |---|---|
 | The package imports and runs | `python main.py` against a clean checkout |
-| Behaviour matches the specification | the cases in `tests/test_campusflow_next.py` |
+| Behaviour matches the specification | the cases in `tests/test_models.py`, `test_storage.py`, `test_search_reports.py` and `test_quiz.py` |
 | The reported defects were real | each reproduced in `baseline-check.md` before any fix |
 
-Two limits are worth stating plainly. The quiz answer key was set to the letters
-the grading fixture expects rather than derived independently, so it verifies
-the grader and not the questions. And search was exercised only at the scale of
-the test fixtures, not against large ticket sets.
+Two limits are worth stating plainly. The quiz answer key was originally set to
+the letters the grading fixture expected rather than derived from the rules, so
+it verified the grader and not the questions — D8 is what that cost. `test_14`
+now derives each letter from the behaviour the question asks about and fails if
+the stored key disagrees, so a wrong key can no longer pass. The second limit
+remains: search was exercised only at the scale of the test fixtures, not
+against large ticket sets.
 

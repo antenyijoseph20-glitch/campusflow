@@ -97,7 +97,11 @@ campusflow/
 │       └── storage.py
 ├── tests/
 │   ├── __init__.py
-│   └── test_campusflow_next.py
+│   ├── base.py
+│   ├── test_models.py
+│   ├── test_quiz.py
+│   ├── test_search_reports.py
+│   └── test_storage.py
 ├── baseline-check.md
 ├── learning_note.md
 ├── main.py
@@ -116,7 +120,9 @@ tracked by Git.
 - `quiz.py` — Provides the Engineering Understanding Check question bank and grader.
 - `cli.py` — Provides the command-line interface for interacting with the application.
 - `main.py` — Serves as the application entry point.
-- `tests/` — Contains the automated test suite.
+- `tests/` — Contains the automated test suite, split by the module it exercises.
+  `base.py` holds the shared per-test isolation and the `src/` import bootstrap,
+  and is not itself collected as a test module.
 - `baseline-check.md` — Records the initial audit, reproduced defects, and remediation.
 - `learning_note.md` — Quiz explanations and mentor discussion points.
 - `docs/design-decisions.md` — Records important technical decisions.
@@ -367,7 +373,8 @@ two bug-hunter checks.
 - Rejection of malformed JSON, a non-array root, duplicate ticket IDs, records
   missing required fields, and records that are not objects.
 - Rollback of in-memory state when a save fails.
-- Engineering Understanding Check scoring and rejection of invalid choices.
+- Engineering Understanding Check scoring, rejection of invalid choices, and the
+  answer key itself checked against the rules the code enforces.
 
 Run the tests after making changes and before opening a pull request. Report the
 actual results rather than claiming that a check passed without running it.

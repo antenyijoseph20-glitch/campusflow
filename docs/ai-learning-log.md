@@ -45,6 +45,8 @@ python3 -m unittest discover -s tests -q
 
 A successful test run provides evidence that the tested behavior works under the tested conditions. It does not prove that every possible scenario is correct.
 
+Where the expected values come from matters as much as the assertions. A test that takes its expectations from the code under test — by repeating the same fixture, or the same literal, on both sides — can only show that the code agrees with itself. The quiz test did exactly that: it graded the answer key using the answer key, so it passed while the key was wrong. Deriving each expected value from an independent source, such as the behavior of the system the question is about, is what gives a test the ability to fail.
+
 **Next step:**
 
 Continue adding tests for boundary values, malformed data, and failure scenarios.
@@ -309,9 +311,13 @@ collect.
 **Prompt.** Implement the quiz with strict grading that rejects invalid choices
 rather than counting them as wrong answers.
 
-**Verification.** Graded the answer fixture and confirmed a score of 6. Then
-submitted an out-of-range choice and confirmed it was flagged invalid and
-scored 0, and confirmed answers are accepted case- and whitespace-insensitively.
+**Verification.** Derived each question's correct option by exercising the rule
+it asks about — the unassigned guard, the priority boundary, the resolved lock,
+note length, the boolean rejection, and the atomic save — then required the
+stored answer key to match all six, rather than grading the key against itself.
+Submitted an out-of-range choice and confirmed it was flagged invalid instead of
+being counted as a wrong answer, and confirmed answers are accepted case- and
+whitespace-insensitively.
 
 **Decision.** Treat a choice outside A–D as invalid and record it separately
 from an incorrect answer, so the result distinguishes "did not know" from "gave

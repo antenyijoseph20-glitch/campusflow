@@ -121,8 +121,8 @@ git diff --check
 Run `python3 -m pip install -e .` first so that the application can find the
 `campus_flow` package under `src/`. The test command itself does not depend on
 that install: `unittest` does not read the `pythonpath` setting in
-`pyproject.toml`, so `tests/test_campusflow_next.py` adds `src/` to the import
-path before importing the package.
+`pyproject.toml`, so `tests/base.py` adds `src/` to the import path before any
+test module imports the package.
 
 That setup cannot live in `tests/__init__.py`. Discovery with `-s tests` and no
 `-t` takes `tests/` as its top-level directory, so it walks the folder as plain
@@ -182,10 +182,18 @@ at first use rather than at load, which is the point at which the storage layer
 was supposed to have rejected it. D14 and D15 are the same defect in two
 places: a validation gap that arrives as an exception instead of a message.
 
+**D16 — `test_14` graded the quiz against its own fixture.** The test hardcoded
+the letters `B, C, B, C, C, B` — the same letters stored as the answer key — and
+asserted a full score. It could therefore confirm that the grader counts
+correctly, but not that any question was right, because the expected values and
+the values under test came from a single source. This is D4 one layer up: the
+tautological tests asserted Python's own operators instead of the application's
+behaviour, and `test_14` asserted the quiz's own key instead of the rules. It is
+why D8 passed a green suite in precisely the form that made it wrong.
+
 ### Remediation
 
-- D8: reworded Q1 so the marked option is the one the code actually permits,
-  keeping the fixture letters unchanged.
+- D8: reworded Q1 so the marked option is the one the code actually permits.
 - D9: added an explicit sequence guard to `update_workflow`, plus assertions in
   `test_02` covering both the rejection and the working path.
 - D10–D13: corrected the affected documents.
@@ -194,13 +202,21 @@ places: a validation gap that arrives as an exception instead of a message.
 - D15: `load_tickets` now requires every record to carry all nine ticket fields,
   rejecting the file whole if any record is incomplete, with cases in `test_13`
   covering both a missing field and a non-object entry.
+- D16: `test_14` now exercises the rule behind each question — the unassigned
+  guard, the priority boundary, the resolved lock, note length, the boolean
+  rejection, and the atomic save — locates the marked option by its wording
+  rather than its position, and requires the stored key to agree with all six.
+  A key that contradicts the code now fails the suite.
 - Removed a bare `except:` in `storage.py`.
 
 ### What this review did not catch
 
 Both audits were performed by reading and running the code. Neither compares the
 documentation to the implementation automatically, which is why D10 and D11
-survived a build whose test suite was fully green. `test_14` grades the quiz
-against its own fixture, so D8 passed the suite in the exact form that made it
-wrong — a test that checks a claim against itself cannot detect that the claim
-is false.
+survived a build whose test suite was fully green.
+
+D16 is the same lesson stated as a test-design rule: a test whose expected values
+are taken from the thing it is testing can only prove internal consistency, not
+correctness. D8 and D16 were found by reading the quiz against the workflow
+rules. No amount of re-running the suite would have surfaced either one, because
+the suite was passing.

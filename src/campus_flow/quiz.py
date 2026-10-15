@@ -11,13 +11,14 @@ VALID_CHOICES = ("A", "B", "C", "D")
 class EngineeringQuiz:
     """Static question bank plus a strict grader."""
 
-    # The grading fixture in tests/test_campusflow_next.py fixes the expected
-    # answer letters at B, C, B, C, C, B, so each question below places its
-    # correct option at that letter. The questions describe rules this
-    # codebase genuinely enforces, and each marked option was checked against
-    # that behaviour (see D8 in baseline-check.md) -- but the letters themselves
-    # come from the contract fixture. If the fixture changes, the options must
-    # be reordered to match.
+    # Each question places its correct option at the letter recorded in
+    # "answer", and tests/test_quiz.py derives that letter
+    # independently: it exercises the rule the question is about, then locates
+    # the matching option by its wording rather than by its position. Reordering
+    # a question's options is therefore safe as long as "answer" is updated to
+    # whichever option still describes the enforced rule. A key that disagrees
+    # with the code fails the suite instead of passing it -- which is what
+    # happened before D8 was fixed (see baseline-check.md).
     QUESTIONS = {
         1: {
             "question": "An open ticket has no assignee. Which status may it move into?",
