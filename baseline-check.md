@@ -119,7 +119,20 @@ git diff --check
 ```
 
 Run `python3 -m pip install -e .` first so that the application can find the
-`campus_flow` package under `src/`. The test command itself does not depend on
+`campus_flow` package under `src/`. On a distribution whose Python is marked
+externally managed — Debian and Ubuntu both are — pip refuses that command
+outright with `error: externally-managed-environment` (PEP 668), so use a
+virtual environment instead:
+
+```bash
+python3 -m venv .venv
+.venv/bin/pip install -e .
+```
+
+An editable install was confirmed this way: the wheel built, no deprecation
+warning was reported, and importing the package then succeeded.
+
+The test command itself does not depend on
 that install: `unittest` does not read the `pythonpath` setting in
 `pyproject.toml`, so `tests/base.py` adds `src/` to the import path before any
 test module imports the package, and the repository root alongside it so that
