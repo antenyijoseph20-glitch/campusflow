@@ -9,7 +9,7 @@ try:  # discovery run from tests/ (the documented command)
 except ImportError:  # discovery run from the repository root
     from tests.base import CampusFlowTestCase
 
-from campus_flow.search_reports import TicketReports, TicketSearch
+from campus_flow.search_reports import TicketReports, TicketSearch, sort_by_priority
 
 
 class TestSearchReports(CampusFlowTestCase):
@@ -125,3 +125,47 @@ class TestSearchReports(CampusFlowTestCase):
         # The stored canonical value is what search must match against.
         results = TicketSearch.search(self.manager.list_all_tickets(), category="NETWORK")
         self.assertEqual([t["id"] for t in results], ["T001"])
+
+    def test_report_breaks_down_by_category_and_counts_resolved(self):
+        self.manager.create_ticket("Switch error", "Network", "high", 15)
+        self.manager.create_ticket("Paper jam", "Hardware", "medium", 2)
+        self.manager.create_ticket("Cable swap", "Network", "low", 1)
+
+        self.manager.assign_ticket("T001", "Alice")
+        self.manager.update_workflow("T001", "in_progress")
+        self.manager.update_workflow("T001", "resolved")
+
+        report = TicketReports(self.manager.list_all_tickets())
+
+        # Every valid category is present, including the ones with no tickets.
+        self.assertEqual(
+            report.count_by_category(),
+            {"Network": 2, "Hardware": 1, "Software": 0, "Other": 0},
+        )
+        self.assertEqual(report.resolved_count(), 1)
+        self.assertEqual(report.resolved_count() + report.unresolved_count(), report.total)
+
+        # generate() carries both, so the CLI reads them from one place.
+        generated = report.generate()
+        self.assertEqual(generated["category_breakdown"]["Network"], 2)
+        self.assertEqual(generated["resolved"], 1)
+
+    def test_sort_by_priority_orders_by_weight_then_numeric_id(self):
+        # Created in an order unrelated to priority, and the IDs reach two
+        # digits so a textual sort would put T010 above T009.
+        self.manager.create_ticket("Low", "Other", "low", 1)
+        self.manager.create_ticket("Middle", "Other", "medium", 3)
+        self.manager.create_ticket("Top", "Network", "high", 15)
+
+        ordered = sort_by_priority(self.manager.list_all_tickets())
+
+        self.assertEqual([t["priority"] for t in ordered], ["critical", "medium", "low"])
+        self.assertEqual([t["id"] for t in ordered], ["T003", "T002", "T001"])
+
+        # Sorting does not mutate the caller's list.
+        self.assertEqual(
+            [t["id"] for t in self.manager.list_all_tickets()],
+            ["T001", "T002", "T003"],
+        )
+        # An empty input is not an error.
+        self.assertEqual(sort_by_priority([]), [])

@@ -61,14 +61,18 @@ The project is also a practical demonstration of Python application design, obje
 - **Priority calculation:** Determine ticket priority from urgency and the number of affected users.
 - **Staff assignment:** Assign tickets to responsible staff members.
 - **Workflow management:** Control ticket status transitions.
-- **Notes:** Attach follow-up notes to a ticket with per-ticket note IDs.
-- **Search:** Case-insensitive substring search on titles, combined with category, status, urgency, and priority filters using strict logical AND.
-- **Workload management:** Organize tickets into work queues.
-- **Reporting:** Review ticket totals, status and priority breakdowns, and resolution percentage.
+- **Notes:** Attach follow-up notes to a ticket with per-ticket note IDs, and
+  view a ticket's notes as a list.
+- **Search:** Case-insensitive substring search on titles, combined with category, status, urgency, and priority filters using strict logical AND. Results
+  show the assignee alongside the status, priority and category, and a second view
+  presents the same matches ordered by priority and then ticket ID.
+- **Workload management:** Organize open tickets into a work queue.
+- **Reporting:** Review ticket totals, resolved and unresolved counts, and status,
+  category and priority breakdowns, plus the resolution percentage.
 - **JSON persistence:** Store ticket records locally between application runs.
 - **Safer file updates:** Use atomic file replacement when saving data.
 - **Failure handling:** Roll back the in-memory change when a save fails, so memory never diverges from disk.
-- **Engineering check:** A short multiple-choice quiz covering the rules the system enforces.
+- **Engineering check:** A short multiple-choice quiz covering the rules the system enforces, runnable from the menu or from Python. A choice outside A–D is refused and re-asked rather than counted as a wrong answer.
 - **Automated tests:** Test models, validation, storage, persistence, search, reporting, workflow behavior, the CLI menu, and the entry point.
 
 ## Technology Stack
@@ -122,7 +126,7 @@ tracked by Git.
 
 - `models.py` — Defines `TicketManager`: ticket data, validation rules, workflow guards, notes, and priority logic.
 - `storage.py` — Handles JSON persistence, data validation during loading, and atomic file updates.
-- `search_reports.py` — Provides `TicketSearch` (case-insensitive multi-filter search) and `TicketReports` (aggregate reporting).
+- `search_reports.py` — Provides `TicketSearch` (case-insensitive multi-filter search), `TicketReports` (aggregate reporting), and `sort_by_priority` (the priority-then-ID ordering the queue and the sorted search view share).
 - `quiz.py` — Provides the Engineering Understanding Check question bank and grader.
 - `cli.py` — Provides the command-line interface for interacting with the application.
 - `main.py` — Serves as the application entry point.
@@ -213,14 +217,28 @@ PYTHONPATH=src python3 main.py
 
 Follow the on-screen menu to select an available operation.
 
-The application provides menus for creating and viewing tickets, assigning
-staff, updating workflow status, adding notes, searching tickets, viewing the
-work queue, and generating reports.
+The main menu offers:
+
+```text
+1.  Create Ticket
+2.  List All Tickets
+3.  View Ticket Details
+4.  Assign Ticket
+5.  Update Ticket Status (Workflow)
+6.  Add Note to Ticket
+7.  View Ticket Notes
+8.  Search Tickets
+9.  Search Tickets Sorted by Priority
+10. View Open Work Queue
+11. Generate Reports
+12. Engineering Understanding Check
+13. Exit
+```
 
 ### Example session
 
 ```text
-Select an option (1-10): 1
+Select an option (1-13): 1
 --- Create New Ticket ---
 Enter ticket title: Wi-Fi down in Block A
 Enter category: network
@@ -302,9 +320,18 @@ The file contains a single JSON array of ticket objects:
 
 On load, the file must parse as JSON and its root must be an array. Every record
 must be an object carrying all nine ticket fields, with a present and unique
-`id`. A record that is not an object, is missing a field, or repeats an ID
-causes the load to be rejected, and the manager then starts from an empty list
-rather than exposing corrupt data.
+`id`. The values inside those fields are then checked: `title` must be
+non-blank, `category`, `urgency`, `priority` and `status` must each be one of the
+canonical values above, `affected_users` must be a positive integer (a boolean is
+rejected even though Python treats it as one), `assigned_to` must be null or a
+non-blank name, and each note must carry `note_id`, `author` and `message` with a
+message of 5–300 characters and a `note_id` unique within its ticket. `priority`
+is derived from `urgency` and `affected_users`, so a stored value that disagrees
+with those two is rejected as well.
+
+A record that is not an object, is missing a field, repeats an ID, or holds an
+illegal value causes the load to be rejected, and the manager then starts from an
+empty list rather than exposing corrupt data.
 
 A rejected load therefore starts empty, and the next successful save writes that
 empty list over the original file. If a file is rejected, copy it aside before
@@ -383,7 +410,12 @@ two bug-hunter checks.
 - Report counts staying in step with the ticket list after resolve/reopen.
 - JSON round-trip of tickets, notes, and next IDs.
 - Rejection of malformed JSON, a non-array root, duplicate ticket IDs, records
-  missing required fields, and records that are not objects.
+  missing required fields, records that are not objects, and records whose
+  values the application could not have written — an illegal status, category,
+  urgency or priority, a zero or boolean user count, a malformed note, a repeated
+  note ID, and a priority that contradicts its own urgency and user count.
+- The work queue holding open tickets only, and ordering them by priority and
+  then numeric ID.
 - Rollback of in-memory state when a save fails.
 - Engineering Understanding Check scoring, rejection of invalid choices, and the
   answer key itself checked against the rules the code enforces.
@@ -398,8 +430,8 @@ reach. It patches `input()` with a fixed sequence of answers and captures
 stdout, so each handler runs its real code path: the input helpers, the table
 renderer on an empty and a non-string row, every workflow branch (open,
 resolved-and-declined, resolved-and-confirmed, missing ticket), the create,
-view, list, search, report and work-queue handlers, and the menu loop's exit and
-invalid-choice paths.
+view, list, notes, search, sorted-search, report, work-queue and quiz handlers,
+and the menu loop's exit and invalid-choice paths.
 
 The workflow is checked at both layers on purpose. The menu offers only the legal
 next status, and the model refuses an illegal one even when the user types it

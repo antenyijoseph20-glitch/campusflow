@@ -323,19 +323,74 @@ whitespace-insensitively.
 from an incorrect answer, so the result distinguishes "did not know" from "gave
 a value that is not an option".
 
+### Engineer A — Cycle 3: Validating values, not just field names
+
+**Original gap.** Cycle 1's validation stopped at structure: nine field names
+and a unique ID. A record with an illegal `status`, a boolean `affected_users`,
+or a note with no author loaded cleanly and then behaved as a live ticket in a
+state the application could neither produce nor leave. `design-decisions.md` §3
+argued this was correct — that deciding legal values belongs to the manager, not
+the storage layer.
+
+**Prompt.** Validate the values inside each loaded record, and check the notes
+inside each ticket.
+
+**Verification.** Wrote records by hand with one field broken at a time — an
+illegal status, an uncanonical category, a boolean user count, a note missing
+its author, two notes sharing an ID — and confirmed each was rejected whole.
+Then wrote the same record with a legitimate `priority` contradiction fixed and
+confirmed it loaded, which is what shows the rejection came from the
+contradiction rather than from a neighbouring field.
+
+**Decision.** Reversed the §3 argument and rewrote the section to record the
+reversal, because the old reasoning is why the gap survived the review that
+found the related defect. The one rule that cannot be decided inside `storage`
+is `priority`, which is derived; rather than copy the four-branch rule or import
+`models` back into `storage` (a cycle), `StorageManager` takes an optional
+`priority_rule` callable and `TicketManager` passes its own method in.
+
+### Engineer B — Cycle 3: The queue, the report, and the quiz
+
+**Original gap.** Three separate misses against the sprint brief. The work queue
+included `in_progress` tickets although it is the Open Work Queue. The report
+had no category breakdown and no resolved count, so two required numbers had no
+method behind them. And the quiz's six questions were about different rules from
+the six the brief names — four required questions had no question behind them.
+
+**Prompt.** Filter the queue to open tickets, add the missing report figures,
+and rewrite the question bank to the six required topics.
+
+**Verification.** Built tickets through all three states and confirmed the queue
+held only the open one while the list still showed all three. Checked the
+category breakdown against a fixture with two categories and the resolved count
+against a resolved-and-reopened pair. For the quiz, wrote the key first and then
+made `test_14` derive each letter by exercising the rule the question asks
+about, so the key is checked rather than confirmed.
+
+**Decision.** Set the answer key to whichever option describes the enforced
+rule, never to a letter sequence. The sequence is what went wrong in D8: the
+letters were chosen to satisfy a fixture and the questions were written around
+them, which is how a question came to mark a refused transition as correct.
+Writing the question first and the key from it removes the opportunity.
+
+Set the queue filter to `open` only rather than adding a second method for
+in-progress work, and checked that nothing became unreachable: in-progress
+tickets are still listed, still match a status search, and are still counted in
+the status breakdown. Only the queue drops them.
+
 ## Current Verification Checklist
 
 Use this checklist when performing a project review. Mark items only after running the corresponding checks. The marks below record the most recent full review; clear them when starting the next one.
 
-- [x] Run the full test suite and record the actual result. — 39 tests, `OK`: 16 required cases, 21 CLI cases and 2 entry-point cases. That run also confirmed the repository-root entry in `tests/base.py` puts `main.py` on the import path before that module imports it. One entry-point case was later removed — an assertion on the `__main__` guard that read the source text instead of exercising behaviour — leaving 38.
-- [x] Compile the application and test files. — `compileall` reported no errors. The suite importing every module, `test_main.py` included, is independent evidence that each one parses.
-- [x] Check the Git diff for whitespace errors. — `git diff --check` reported none.
+- [x] Run the full test suite and record the actual result. — 51 tests, `OK`. The suite grew from 38 to 51 with the queue filter, the report figures, the load-time value checks and the new menus: 9 model cases, 7 storage, 7 search and reporting, 1 quiz, 26 CLI and 1 entry-point. This run was made on `feat/22-search-and-insights` after rebasing onto `main` with the validation work merged, so it is the first run in which both engineers' changes are present together.
+- [x] Compile the application and test files. — `python3 -m compileall -q src tests` reported no errors, run on the revision that has both engineers' work in it.
+- [x] Check the Git diff for whitespace errors. — `git diff --check main...HEAD` reported one defect first: a blank line left at the end of `baseline-check.md` by an edit to the review section. It was removed in `46d54fb` and the check then reported none. Worth recording that it found something, because the item above it had passed on an earlier revision and would have hidden this one.
 - [x] Test invalid ticket input and workflow transitions. — cases 2, 4, 6 and 14, plus the CLI workflow cases.
 - [x] Test storage failures and state rollback. — case 13, including a save stubbed to fail for every mutator.
 - [x] Verify installation and execution instructions. — the suite passes both from an uninstalled checkout and against `pip install -e .`.
-- [x] Review documentation for unsupported claims. — D7, D10, D11 and D13 corrected; D16 closed.
+- [x] Review documentation for unsupported claims. — D7, D10, D11 and D13 corrected; D16 closed. The third review reversed two of those corrections: `design-decisions.md` §3 previously defended the validation gap recorded as D19, and the quiz bank did not ask the questions D20 describes. Both documents now follow the code.
 
-One item is not covered by anything above: the exit status of the `python3 main.py` menu itself, which is exercised only through its handlers rather than as a subprocess.
+The `python3 main.py` menu is now covered as a subprocess as well as through its handlers: `printf '1\nSmoke test ticket\nNetwork\nhigh\n15\n2\n13\n' | PYTHONPATH=src python3 main.py` created T001, listed it back as `critical`, and exited on 13 without a traceback. The `PYTHONPATH=src` prefix is what the README documents for a checkout that has not been installed — without it the script stops at `ModuleNotFoundError: No module named 'campus_flow'`, which is the `src/` layout working as configured rather than a defect. What that run does not establish is the exit status as a value: the output above is a pipeline, so the status observed was `tail`'s.
 
 Example commands:
 

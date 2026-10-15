@@ -221,3 +221,83 @@ are taken from the thing it is testing can only prove internal consistency, not
 correctness. D8 and D16 were found by reading the quiz against the workflow
 rules. No amount of re-running the suite would have surfaced either one, because
 the suite was passing.
+
+## 8. Third review, against the sprint brief
+
+A third pass checked the repository against the brief the work was commissioned
+from, rather than against the requirements inferred from the code. That
+distinction is the finding: every defect below sat behind a green suite, and two
+of them were actively defended by the documentation as correct design.
+
+**D17 — The work queue included in-progress tickets.** `get_work_queue` filtered
+on `status in ("open", "in_progress")` and described itself as returning the
+unresolved tickets. The brief specifies an Open Work Queue. In-progress work is
+already being handled, so including it made the queue grow with work under way
+and stop being a queue at all. The interface agreed with the code — the empty
+state read "no open or in-progress tickets" — so nothing in the repository
+contradicted anything else. Code and message were consistently wrong together,
+which is why no amount of review-by-consistency would have found it.
+
+**D18 — The report had no category breakdown and no resolved count.**
+`TicketReports` offered `count_by_status`, `count_by_priority`,
+`resolution_percentage` and `unresolved_count`. Two of the numbers the brief
+asks the report to show had no method behind them, so no view could display
+them.
+
+**D19 — Load validated structure but not values, and the documentation argued
+for it.** `load_tickets` was strengthened for D15, but only as far as the nine
+field names. A record with `"status": "closed"`, or `"affected_users": true`, or
+a note missing its author, loaded cleanly and then behaved as a live ticket in a
+state no code path could produce or leave. `design-decisions.md` §3 defended the
+gap in as many words: "This validates structure, not values... deciding which
+values are legal belongs to `TicketManager`, not to the storage layer." The
+reasoning was sound about where a *rule* belongs and wrong about what to do with
+data that breaks it. A partial D15 fix plus a written justification is how the
+gap survived the review that found D15.
+
+**D20 — The quiz asked six questions the brief did not ask for.** `quiz.py` held
+six questions about priority precedence, the boolean rejection, note length,
+`os.replace`, and the resolved lock. The brief names six different topics: the
+unassigned guard, the empty-dataset percentage, strict AND filtering, notes on a
+resolved ticket, duplicate IDs at load, and why a pull request with no negative
+test proves nothing. Four of the required questions had no question behind them
+and two of the required topics were absent entirely, while `quiz.py`'s comment
+claimed the bank covered "the rules the code actually enforces" — true of the
+wrong six rules.
+
+### Remediation
+
+- D17: `get_work_queue` now filters on `open` only, with a docstring stating
+  why, and the menu label, README and `design-decisions.md` §8 follow the code.
+  Nothing became unreachable: in-progress tickets are still listed, still
+  searchable by status, and still counted in the status breakdown.
+- D18: added `count_by_category` and `resolved_count`, both included in
+  `generate()`, and both printed by the report view.
+- D19: `_validate_values` now checks every stored value, and `_validate_notes`
+  the shape and uniqueness of note IDs within a ticket. `design-decisions.md` §3
+  was rewritten to record the reversal rather than quietly dropped, because the
+  old argument is the reason the gap lasted. The derived `priority` is checked
+  through a `priority_rule` callable injected by `TicketManager`, so the rule is
+  not stated twice.
+- D20: the bank was rewritten to the six required topics. The answer key was
+  set to whichever option describes the enforced rule, not to a letter sequence,
+  and `test_14` derives each letter from behaviour and fails if the key
+  disagrees. `learning_note.md` was rewritten to match, and now builds its
+  answers from the bank instead of restating the letters.
+- Added `sort_by_priority` and a sorted search view, so search results can be
+  read in the same order the queue uses.
+- The main menu gained the notes view, the sorted search view and the
+  Engineering Understanding Check, taking it to 13 options.
+
+### Three inputs used to exercise the new validation
+
+| Input | Written by hand into `tickets.json` | Expected |
+|---|---|---|
+| A record with `"status": "closed"` | yes | load rejected, manager starts empty |
+| A record with `"urgency": "high"`, `"affected_users": 15`, `"priority": "low"` | yes | load rejected: the pair derives `critical` |
+| The same record with `"priority": "critical"` | yes | load accepted, one ticket |
+
+The third row is the one that matters. Without it, a rejection could come from
+the urgency or the affected-user count rather than from the contradiction, and
+the test would pass for the wrong reason. All three are asserted by
+`test_load_rejects_a_priority_that_contradicts_its_own_inputs`.

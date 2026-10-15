@@ -8,11 +8,30 @@ Two cooperating helpers, both operating on the plain dict records produced by
 - ``TicketReports`` -- aggregate counts and resolution percentage, safe on an
   empty dataset (no division by zero).
 
+Also exports ``sort_by_priority``, the ordering the work queue uses, so search
+results can be presented in the same order.
+
 Neither class mutates ticket data.
 """
 
+VALID_CATEGORIES = ("Network", "Hardware", "Software", "Other")
 VALID_STATUSES = ("open", "in_progress", "resolved")
 VALID_PRIORITIES = ("critical", "high", "medium", "low")
+
+# Lower weight sorts first. Unknown priorities fall to the end rather than
+# raising, so one odd record cannot take down a whole view; the loader rejects
+# such records, which makes this a fallback rather than an expected path.
+PRIORITY_WEIGHTS = {"critical": 0, "high": 1, "medium": 2, "low": 3}
+
+
+def sort_by_priority(tickets):
+    """Return the tickets ordered by priority weight, then numeric ticket ID."""
+    def sort_key(ticket):
+        raw_id = str(ticket.get("id", ""))
+        numeric_id = int(raw_id[1:]) if raw_id[1:].isdigit() else 0
+        return PRIORITY_WEIGHTS.get(ticket.get("priority"), len(PRIORITY_WEIGHTS)), numeric_id
+
+    return sorted(tickets, key=sort_key)
 
 
 def _fold(value):
@@ -98,12 +117,21 @@ class TicketReports:
             for priority in VALID_PRIORITIES
         }
 
+    def count_by_category(self):
+        """Category breakdown; every valid category is present, defaulting to 0."""
+        return {
+            category: sum(1 for t in self.tickets if t.get("category") == category)
+            for category in VALID_CATEGORIES
+        }
+
+    def resolved_count(self):
+        return sum(1 for t in self.tickets if t.get("status") == "resolved")
+
     def resolution_percentage(self):
         """Percentage of tickets resolved. Returns 0.0 for an empty dataset."""
         if self.total == 0:
             return 0.0
-        resolved = sum(1 for t in self.tickets if t.get("status") == "resolved")
-        return resolved / self.total * 100.0
+        return self.resolved_count() / self.total * 100.0
 
     def unresolved_count(self):
         return sum(
@@ -115,7 +143,9 @@ class TicketReports:
         return {
             "total": self.total,
             "status_breakdown": self.count_by_status(),
+            "category_breakdown": self.count_by_category(),
             "priority_breakdown": self.count_by_priority(),
             "resolution_percentage": self.resolution_percentage(),
+            "resolved": self.resolved_count(),
             "unresolved": self.unresolved_count(),
         }

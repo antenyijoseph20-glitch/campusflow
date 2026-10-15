@@ -136,3 +136,41 @@ class TestModels(CampusFlowTestCase):
         success, _ = self.manager.add_note("T001", "Alice", "Added note after reopening.")
         self.assertTrue(success)
         self.assertEqual(len(self.manager.get_ticket("T001")["notes"]), 1)
+
+    def test_work_queue_holds_only_open_tickets(self):
+        """The queue is what still needs picking up, so in_progress has left it."""
+        self.manager.create_ticket("Waiting", "Other", "low", 1)
+        self.manager.create_ticket("Started", "Network", "high", 15)
+        self.manager.create_ticket("Finished", "Hardware", "medium", 3)
+
+        # T002 goes in_progress, T003 goes all the way to resolved.
+        self.manager.assign_ticket("T002", "Alice")
+        self.manager.update_workflow("T002", "in_progress")
+        self.manager.assign_ticket("T003", "Bob")
+        self.manager.update_workflow("T003", "in_progress")
+        self.manager.update_workflow("T003", "resolved")
+
+        queue = self.manager.get_work_queue()
+
+        self.assertEqual([t["id"] for t in queue], ["T001"])
+        self.assertEqual(queue[0]["status"], "open")
+        # Both tickets still exist and are still reported; only the queue drops
+        # them, so nothing became invisible.
+        self.assertEqual(len(self.manager.list_all_tickets()), 3)
+
+    def test_work_queue_orders_by_priority_then_numeric_id(self):
+        """Numeric, not textual, ID order: T010 sorts after T009, not after T001."""
+        for number in range(1, 11):
+            # Urgency low and one user keeps every ticket at 'low' priority, so
+            # the tie-break on ID is what is under test.
+            self.manager.create_ticket(f"Ticket {number}", "Other", "low", 1)
+        self.manager.create_ticket("Critical one", "Network", "high", 15)
+
+        queue = self.manager.get_work_queue()
+
+        # The critical ticket is first despite being created last.
+        self.assertEqual(queue[0]["id"], "T011")
+        self.assertEqual(
+            [t["id"] for t in queue[1:]],
+            [f"T{n:03d}" for n in range(1, 11)],
+        )
