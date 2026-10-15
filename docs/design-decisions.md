@@ -22,8 +22,28 @@ data during a failed save.
 
 ## 4. Automated tests
 
-Tests are separated by responsibility:
+The suite lives in a single file, `tests/test_campusflow_next.py`, and covers
+the 16 required verification cases plus two bug-hunter checks. Tests are grouped
+in one file because they share a manager and a temporary data file per test.
 
-- `test_tickets.py`: ticket creation, validation, IDs, and reports.
-- `test_workflow.py`: assignment, workflow transitions, and manager rollback.
-- `test_storage.py`: JSON loading, saving, validation, and file protection.
+Each test uses its own temporary directory, so no test data is written into the
+repository.
+
+## 5. One canonical TicketManager
+
+An earlier merge brought two different `TicketManager` implementations into the
+package: a dict-record version returning `(bool, message)` tuples, and a
+dataclass version raising `ValueError`. They were never reconciled, and neither
+was importable after the `src/` layout refactor.
+
+The dict-record version in `models.py` was kept, because the test matrix, the
+storage layer, and the documentation were all written against it. The dataclass
+version was removed. A single implementation avoids the two classes drifting
+apart and removes the ambiguity about which error-handling contract applies.
+
+## 6. Search and reporting kept separate
+
+`search_reports.py` holds `TicketSearch` and `TicketReports`. Neither mutates
+ticket data; both operate on the plain dict records produced by `TicketManager`.
+Keeping them out of `models.py` keeps the manager focused on state transitions
+and lets the search and report rules be tested in isolation.

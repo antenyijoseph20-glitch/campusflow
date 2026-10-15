@@ -1,4 +1,5 @@
 from campus_flow.models import TicketManager
+from campus_flow.search_reports import TicketReports, TicketSearch
 
 
 class CLI:
@@ -21,6 +22,10 @@ class CLI:
             if value:
                 return value
             print("Error: This field cannot be empty.")
+
+    def _ask_optional(self, prompt):
+        value = input(prompt).strip()
+        return value or None
 
     def _report(self, result):
         """Print a (success, message) tuple and return the success flag."""
@@ -53,7 +58,10 @@ class CLI:
             "3": self._handle_view,
             "4": self._handle_assign,
             "5": self._handle_workflow,
-            "6": self._handle_work_queue,
+            "6": self._handle_add_note,
+            "7": self._handle_search,
+            "8": self._handle_work_queue,
+            "9": self._handle_reports,
         }
 
         while True:
@@ -63,18 +71,21 @@ class CLI:
             print("3. View Ticket Details")
             print("4. Assign Ticket")
             print("5. Update Ticket Status (Workflow)")
-            print("6. View Work Queue")
-            print("7. Exit")
+            print("6. Add Note to Ticket")
+            print("7. Search Tickets")
+            print("8. View Work Queue")
+            print("9. Generate Reports")
+            print("10. Exit")
 
-            choice = input("Select an option (1-7): ").strip()
+            choice = input("Select an option (1-10): ").strip()
 
-            if choice == "7":
+            if choice == "10":
                 print("Exiting CampusFlow. Goodbye!")
                 return
 
             handler = actions.get(choice)
             if not handler:
-                print("Error: Invalid choice. Please enter a number between 1 and 7.")
+                print("Error: Invalid choice. Please enter a number between 1 and 10.")
                 continue
 
             try:
@@ -158,6 +169,43 @@ class CLI:
         print("Allowed target statuses: in_progress, resolved")
         self._report(self.manager.update_workflow(ticket_id, self._ask("Enter target status: ")))
 
+    def _handle_add_note(self):
+        ticket_id = self._ask("Enter Ticket ID: ")
+        author = self._ask("Enter note author: ")
+        message = self._ask("Enter note message: ")
+        self._report(self.manager.add_note(ticket_id, author, message))
+
+    def _handle_search(self):
+        print("\n--- Search Tickets ---")
+        print("Press Enter to skip any filter.")
+        query = self._ask_optional("Title contains: ")
+        category = self._ask_optional("Category: ")
+        status = self._ask_optional("Status (open/in_progress/resolved): ")
+        priority = self._ask_optional("Priority (critical/high/medium/low): ")
+
+        try:
+            results = TicketSearch.search(
+                self.manager.list_all_tickets(),
+                query=query,
+                category=category,
+                status=status,
+                priority=priority,
+            )
+        except ValueError as error:
+            print(f"Error: {error}")
+            return
+
+        if not results:
+            print("\nNo tickets matched those filters.")
+            return
+
+        rows = [
+            (t["id"], t["status"], t["priority"], t["category"], t["title"])
+            for t in results
+        ]
+        print(f"\n--- {len(results)} Match(es) ---")
+        self._print_table(rows, ("ID", "STATUS", "PRIORITY", "CATEGORY", "TITLE"))
+
     def _handle_work_queue(self):
         queue = self.manager.get_work_queue()
         if not queue:
@@ -170,6 +218,22 @@ class CLI:
         ]
         print(f"\n--- Active Work Queue ({len(queue)}) ---")
         self._print_table(rows, ("ID", "PRIORITY", "STATUS", "ASSIGNED", "TITLE"))
+
+    def _handle_reports(self):
+        report = TicketReports(self.manager.list_all_tickets()).generate()
+
+        print("\n--- CampusFlow System Report ---")
+        print(f"Total Tickets : {report['total']}")
+        print(f"Unresolved    : {report['unresolved']}")
+        print(f"Resolved      : {report['resolution_percentage']:.1f}%")
+
+        print("\nStatus Breakdown:")
+        for status, count in report["status_breakdown"].items():
+            print(f"  - {status}: {count}")
+
+        print("\nPriority Breakdown:")
+        for priority, count in report["priority_breakdown"].items():
+            print(f"  - {priority}: {count}")
 
 
 def main():
