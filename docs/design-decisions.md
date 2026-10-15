@@ -11,7 +11,9 @@ Tickets follow this sequence:
 
 `open -> in_progress -> resolved`
 
-A ticket must be assigned before it enters `in_progress`.
+A ticket must be assigned before it enters `in_progress`, and must be
+`in_progress` before it can be resolved. The transition from `open` straight to
+`resolved` is rejected, so a ticket cannot be closed without ever being started.
 A resolved ticket must be explicitly reopened before work resumes.
 
 ## 3. JSON persistence
@@ -23,8 +25,9 @@ data during a failed save.
 ## 4. Automated tests
 
 The suite lives in a single file, `tests/test_campusflow_next.py`, and covers
-the 16 required verification cases plus two bug-hunter checks. Tests are grouped
-in one file because they share a manager and a temporary data file per test.
+the 16 required verification cases: 14 numbered cases plus two bug-hunter
+checks. Tests are grouped in one file because they share a manager and a
+temporary data file per test.
 
 Each test uses its own temporary directory, so no test data is written into the
 repository.

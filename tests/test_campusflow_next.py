@@ -34,7 +34,7 @@ class TestCampusFlowNext(unittest.TestCase):
         # low: otherwise
         self.assertEqual(self.manager.calculate_priority("low", 1), "low")
 
-    # 2. Unassigned open -> in_progress rejected with unchanged data
+    # 2. Unassigned open -> in_progress rejected; a ticket cannot skip a step
     def test_02_unassigned_in_progress_guard(self):
         self.manager.create_ticket("Wi-Fi down", "Network", "high", 15)
         tickets_before = [dict(t) for t in self.manager.list_all_tickets()]
@@ -43,6 +43,28 @@ class TestCampusFlowNext(unittest.TestCase):
         self.assertFalse(success)
         self.assertEqual(self.manager.get_ticket("T001")["status"], "open")
         self.assertEqual(self.manager.list_all_tickets(), tickets_before)
+
+        # A ticket cannot jump straight to resolved: work must start first.
+        success, _ = self.manager.update_workflow("T001", "resolved")
+        self.assertFalse(success)
+        self.assertEqual(self.manager.get_ticket("T001")["status"], "open")
+
+        # Assigning removes the in_progress block but not the sequence rule.
+        self.manager.assign_ticket("T001", "Alice")
+        success, _ = self.manager.update_workflow("T001", "resolved")
+        self.assertFalse(success)
+        self.assertEqual(self.manager.get_ticket("T001")["status"], "open")
+
+        # A non-string status is rejected, not raised.
+        success, _ = self.manager.update_workflow("T001", None)
+        self.assertFalse(success)
+
+        # The one-step-at-a-time path still works end to end.
+        success, _ = self.manager.update_workflow("T001", "in_progress")
+        self.assertTrue(success)
+        success, _ = self.manager.update_workflow("T001", "resolved")
+        self.assertTrue(success)
+        self.assertEqual(self.manager.get_ticket("T001")["status"], "resolved")
 
     # 3. Resolved ticket assignment mutation rejected
     def test_03_resolved_assignment_mutation_rejected(self):
@@ -55,11 +77,22 @@ class TestCampusFlowNext(unittest.TestCase):
         self.assertFalse(success)
         self.assertEqual(self.manager.get_ticket("T001")["assigned_to"], "Alice")
 
-    # 4. Invalid affected_users (0, negative, float, boolean) rejected
-    def test_04_invalid_affected_users_rejection(self):
+    # 4. Invalid field values rejected, including non-string types
+    def test_04_invalid_field_values_rejection(self):
         for bad_val in [0, -5, 3.5, True, False, "ten"]:
             success, _ = self.manager.create_ticket("Test", "Software", "low", bad_val)
             self.assertFalse(success, f"Failed to reject invalid affected_users: {bad_val}")
+
+        # Non-string fields return a message rather than raising AttributeError.
+        for bad_args in [
+            (None, "Software", "low", 1),
+            (123, "Software", "low", 1),
+            ("Valid title", None, "low", 1),
+            ("Valid title", "Software", None, 1),
+        ]:
+            success, _ = self.manager.create_ticket(*bad_args)
+            self.assertFalse(success, f"Failed to reject non-string field: {bad_args}")
+
         # Nothing was created by any of the rejected attempts.
         self.assertEqual(self.manager.list_all_tickets(), [])
 

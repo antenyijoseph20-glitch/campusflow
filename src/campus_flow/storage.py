@@ -62,6 +62,6 @@ class StorageManager:
             if os.path.exists(temp_filepath):
                 try:
                     os.remove(temp_filepath)
-                except:
+                except OSError:
                     pass
             return False

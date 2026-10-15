@@ -166,7 +166,13 @@ class CLI:
             self._report(self.manager.update_workflow(ticket_id, "open"))
             return
 
-        print("Allowed target statuses: in_progress, resolved")
+        # The workflow only advances one step at a time: open -> in_progress ->
+        # resolved. From open the only target is in_progress, and that requires
+        # an assignee.
+        allowed = ["in_progress"] if ticket["status"] == "open" else ["resolved"]
+        if ticket["assigned_to"] is None:
+            print("Note: this ticket is unassigned; assign it before moving to in_progress.")
+        print(f"Allowed target statuses: {', '.join(allowed)}")
         self._report(self.manager.update_workflow(ticket_id, self._ask("Enter target status: ")))
 
     def _handle_add_note(self):

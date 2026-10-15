@@ -16,10 +16,11 @@ print(score, "/", EngineeringQuiz.total_questions())
 
 **Answer: B — no status; the ticket cannot advance while unassigned.**
 
-A ticket that nobody owns must not enter `in_progress`. The guard lives in
-`TicketManager.update_workflow`, so it applies no matter how the method is
-called — not only through the CLI. Rejecting at the model layer is what makes
-the rule testable and consistent.
+An open, unassigned ticket has no legal target. `in_progress` is refused because
+nobody owns it, and `resolved` is refused because the work has not started. Both
+guards live in `TicketManager.update_workflow`, so they apply no matter how the
+method is called — not only through the CLI. Rejecting at the model layer is what
+makes the rule testable and consistent.
 
 *Discussion point:* why enforce this in the manager rather than the menu? If it
 lived in the CLI, any other caller could bypass it.
@@ -99,6 +100,9 @@ the temp file is created beside the target rather than in `/tmp`.
 - **Tests must call real code.** A test that re-implements the logic it claims
   to verify passes whether or not the feature exists. See D4 in
   `baseline-check.md`.
+- **A test that grades a claim against itself cannot find the claim false.**
+  `test_14` checks the quiz against a fixture, so a question whose marked answer
+  the system actually rejects still scored full marks. See D8.
 
 ## Mentor discussion questions
 

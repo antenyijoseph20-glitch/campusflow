@@ -113,9 +113,74 @@ that are not present.
 ## 6. How to verify
 
 ```bash
-python3 -m pytest -q
+PYTHONPATH=src python3 -m unittest discover -s tests -v
 python3 -m compileall -q src tests
 git diff --check
 ```
 
+`PYTHONPATH=src` is required because the package lives under `src/` and
+`unittest` does not read the `pythonpath` setting in `pyproject.toml`.
+
 Record the actual output. Do not mark an item verified without running it.
+
+## 7. Follow-up review, after both features merged
+
+A second audit was run against `main` after the reconciliation and the search,
+reporting and quiz work were merged. It found defects of the same kind as
+section 3, but in the documents rather than the code.
+
+**D8 — The quiz marked a rejected transition as correct.** `quiz.py` Q1 asked
+which status an open, unassigned ticket may move into, and marked `B`
+("in_progress") correct — the one target `update_workflow` refuses. The answer
+key had been set to satisfy the grading fixture at `B, C, B, C, C, B` rather
+than derived from the rules, so the question contradicted the system it was
+meant to test. `learning_note.md` described the rule correctly but labelled its
+answer "B", which in the quiz meant something else.
+
+**D9 — A ticket could skip `in_progress` entirely.** `update_workflow` rejected
+`resolved -> anything but open` and `unassigned -> in_progress`, but nothing
+required a ticket to be started before it was finished, so an unassigned ticket
+could be resolved outright. The README diagram implies a single sequence and no
+test covered the transition.
+
+**D10 — Documentation still described files that no longer exist.**
+`docs/ai-learning-log.md` Entry 3 listed `manager.py` as a live module months
+after it was deleted. This is the D7 defect class, surviving the D7 fix.
+
+**D11 — The test count was stated two ways.** `docs/design-decisions.md` read
+"the 16 required verification cases plus two bug-hunter checks" (18), while
+`README.md` read "14 numbered cases plus two bug-hunter checks" (16). The suite
+runs 16.
+
+**D12 — A malformed Markdown table.** The README technology table had no
+delimiter row, so it rendered as literal text, and omitted Python.
+
+**D13 — Stale runner instructions.** `baseline-check.md` and
+`docs/ai-learning-log.md` still prescribed `python -m pytest`, although the
+documented runner had changed to `unittest`.
+
+**D14 — Non-string input raised instead of being rejected.** `create_ticket`,
+`assign_ticket`, `update_workflow` and `add_note` called `.strip()` on their
+arguments before type-checking, so an `int` title escaped as an
+`AttributeError` rather than returning `(False, message)` like every other
+invalid input.
+
+### Remediation
+
+- D8: reworded Q1 so the marked option is the one the code actually permits,
+  keeping the fixture letters unchanged.
+- D9: added an explicit sequence guard to `update_workflow`, plus assertions in
+  `test_02` covering both the rejection and the working path.
+- D10–D13: corrected the affected documents.
+- D14: added `isinstance` checks ahead of every `.strip()` call, with cases in
+  `test_04`.
+- Removed a bare `except:` in `storage.py`.
+
+### What this review did not catch
+
+Both audits were performed by reading and running the code. Neither compares the
+documentation to the implementation automatically, which is why D10 and D11
+survived a build whose test suite was fully green. `test_14` grades the quiz
+against its own fixture, so D8 passed the suite in the exact form that made it
+wrong — a test that checks a claim against itself cannot detect that the claim
+is false.

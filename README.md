@@ -51,7 +51,10 @@ The project is also a practical demonstration of Python application design, obje
 ## Technology Stack
 
 | Technology | Purpose |
+|---|---|
+| Python 3.8+ | Application language |
 | JSON | Local ticket data persistence |
+| `unittest` | Automated test suite (also runs under pytest) |
 | Git and GitHub | Version control and collaboration |
 
 ## Project Structure
@@ -100,7 +103,8 @@ tracked by Git.
 
 ### Prerequisites
 
-- Python 3.12 or a compatible Python 3 version.
+- Python 3.8 or newer. The project is developed and tested on Python 3.12, and
+  declares `requires-python = ">=3.8"` in `pyproject.toml`.
 - Git.
 - A terminal or command-line environment.
 
@@ -143,7 +147,8 @@ Install the project and its dependencies using the repository's packaging config
 python -m pip install -e .
 ```
 
-If pytest is not included in the project's development dependencies, install it separately:
+`pytest` is optional. The suite is written with `unittest` and runs without it;
+install pytest only if you prefer that runner:
 
 ```bash
 python -m pip install pytest
@@ -201,9 +206,11 @@ The intended rules are:
 
 1. A ticket begins with an open status.
 2. A ticket must be assigned before it can move to `in_progress`.
-3. An in-progress ticket can move to `resolved`.
+3. A ticket must be `in_progress` before it can move to `resolved`. An open
+   ticket cannot skip straight to resolved.
 4. A resolved ticket must be explicitly reopened before further work.
-5. Invalid transitions should be rejected rather than silently accepted.
+5. Invalid transitions are rejected with an error message rather than being
+   silently accepted.
 
 These rules help maintain consistent ticket state and make workflow behavior easier to test.
 
@@ -257,6 +264,10 @@ On load, the file must parse as JSON and its root must be an array. Records
 without an `id`, and duplicate IDs, cause the load to be rejected; the manager
 then starts from an empty list rather than exposing corrupt data.
 
+A rejected load therefore starts empty, and the next successful save writes that
+empty list over the original file. If a file is rejected, copy it aside before
+making any change, in case its contents are still recoverable by hand.
+
 Saving writes the full document to a temporary file and then atomically replaces
 the target, so a failed write cannot truncate existing data. If a save fails,
 the in-memory change is rolled back to its previous value.
@@ -283,8 +294,9 @@ Run the tests in quiet mode:
 PYTHONPATH=src python -m unittest discover -s tests -q
 ```
 
-The suite is written with `unittest` and also runs under `pytest`, which reads
-the source path from `pyproject.toml` and therefore needs no prefix:
+The suite is written with `unittest`; `pytest` is not required. If it is
+installed, the same tests also run under it, reading the source path from
+`pyproject.toml` so no prefix is needed:
 
 ```bash
 python -m pytest -q
@@ -308,8 +320,10 @@ The suite contains the 16 required verification cases: 14 numbered cases plus
 two bug-hunter checks.
 
 - Priority rule precedence, including the `critical` boundary.
-- The unassigned ticket guard and the resolved ticket lock.
-- Strict validation of `affected_users` (zero, negative, decimal, boolean, text).
+- The unassigned ticket guard, the resolved ticket lock, and the rule that a
+  ticket must be `in_progress` before it can be resolved.
+- Strict validation of `affected_users` (zero, negative, decimal, boolean, text)
+  and of non-string `title`, `category`, and `urgency` values.
 - Note addition, note ID assignment, and rejected notes not consuming an ID.
 - Reopening a resolved ticket so that notes are accepted again.
 - Case-insensitive substring search and multi-filter AND search.

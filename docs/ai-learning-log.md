@@ -20,7 +20,7 @@ The purpose of this log is to build practical software engineering skills and ma
 
 ## Learning Entries
 
-### Entry 1 — Automated Testing with pytest
+### Entry 1 — Automated Testing with unittest
 
 **Topic:** Automated testing and regression prevention.
 
@@ -32,13 +32,13 @@ Tests are particularly useful when changing validation rules, ticket workflows, 
 
 **Practical application:**
 
-CampusFlow has tests covering ticket models, workflow behavior, and JSON storage.
+CampusFlow has tests covering ticket models, workflow behavior, search, reporting, and JSON storage.
 
 **Verification commands:**
 
 ```bash
-python -m pytest -v
-python -m pytest -q
+PYTHONPATH=src python -m unittest discover -s tests -v
+PYTHONPATH=src python -m unittest discover -s tests -q
 ```
 
 **Lesson learned:**
@@ -87,9 +87,10 @@ Separating an application into modules makes it easier to understand, test, and 
 
 CampusFlow separates responsibilities across these modules:
 
-- `models.py` — Ticket data and validation.
-- `manager.py` — Ticket-management operations and workflow rules.
+- `models.py` — Ticket data, validation, workflow rules, and notes.
 - `storage.py` — JSON loading and saving.
+- `search_reports.py` — Search and aggregate reporting.
+- `quiz.py` — The Engineering Understanding Check question bank and grader.
 - `cli.py` — User interaction through the command line.
 - `main.py` — Application entry point.
 
@@ -320,7 +321,7 @@ a value that is not an option".
 
 Use this checklist when performing a project review. Mark items only after running the corresponding checks.
 
-- [ ] Run the full pytest suite and record the actual result.
+- [ ] Run the full test suite and record the actual result.
 - [ ] Compile the application and test files.
 - [ ] Check the Git diff for whitespace errors.
 - [ ] Test invalid ticket input and workflow transitions.
@@ -331,7 +332,7 @@ Use this checklist when performing a project review. Mark items only after runni
 Example commands:
 
 ```bash
-python -m pytest -v
+PYTHONPATH=src python -m unittest discover -s tests -v
 python -m compileall -q src tests
 git diff --check
 ```

@@ -57,8 +57,11 @@ class TicketManager:
 
     def create_ticket(self, title, category, urgency, affected_users):
         """Strict validation before mutation."""
-        if not title or not title.strip():
+        if not isinstance(title, str) or not title.strip():
             return False, "Error: Title must not be blank."
+
+        if not isinstance(category, str):
+            return False, f"Error: Invalid category. Choose from {list(self.VALID_CATEGORIES)}."
 
         # Category validation (case-insensitive matching)
         normalized_cat = None
@@ -69,9 +72,9 @@ class TicketManager:
         if not normalized_cat:
             return False, f"Error: Invalid category. Choose from {list(self.VALID_CATEGORIES)}."
 
-        norm_urgency = urgency.strip().lower()
-        if norm_urgency not in self.VALID_URGENCIES:
+        if not isinstance(urgency, str) or urgency.strip().lower() not in self.VALID_URGENCIES:
             return False, f"Error: Invalid urgency. Choose from {list(self.VALID_URGENCIES)}."
+        norm_urgency = urgency.strip().lower()
 
         # CRITICAL BUG-HUNTER DEFENSE: Python bool is a subclass of int. Check bool explicitly first!
         if isinstance(affected_users, bool):
@@ -111,7 +114,7 @@ class TicketManager:
 
     def assign_ticket(self, ticket_id, staff_name):
         """Assign ticket with resolved-lock guard."""
-        if not staff_name or not staff_name.strip():
+        if not isinstance(staff_name, str) or not staff_name.strip():
             return False, "Error: Staff name cannot be blank."
         
         ticket = self.get_ticket(ticket_id)
@@ -130,9 +133,9 @@ class TicketManager:
 
     def update_workflow(self, ticket_id, new_status):
         """Workflow state machine: open -> in_progress -> resolved with strict guards."""
-        norm_status = new_status.strip().lower()
-        if norm_status not in self.VALID_STATUSES:
+        if not isinstance(new_status, str) or new_status.strip().lower() not in self.VALID_STATUSES:
             return False, "Error: Invalid status."
+        norm_status = new_status.strip().lower()
 
         ticket = self.get_ticket(ticket_id)
         if not ticket:
@@ -147,6 +150,12 @@ class TicketManager:
         # Unassigned ticket guard
         if norm_status == "in_progress" and ticket["assigned_to"] is None:
             return False, "Error: Cannot move an unassigned ticket into 'in_progress'."
+
+        # Sequence guard: work must start before it can be finished. Without this
+        # an open ticket could jump straight to 'resolved', skipping assignment
+        # and in_progress entirely.
+        if norm_status == "resolved" and current_status != "in_progress":
+            return False, "Error: A ticket must be in_progress before it can be resolved."
 
         previous_status = ticket["status"]
         ticket["status"] = norm_status
@@ -164,10 +173,10 @@ class TicketManager:
         if ticket["status"] not in ("open", "in_progress"):
             return False, "Error: Resolved tickets cannot accept new notes."
 
-        if not author or not author.strip():
+        if not isinstance(author, str) or not author.strip():
             return False, "Error: Note author cannot be blank."
 
-        cleaned_msg = message.strip() if message else ""
+        cleaned_msg = message.strip() if isinstance(message, str) else ""
         if not (5 <= len(cleaned_msg) <= 300):
             return False, "Error: Note message must be between 5 and 300 characters."
 

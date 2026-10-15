@@ -14,16 +14,17 @@ class EngineeringQuiz:
     # The grading fixture in tests/test_campusflow_next.py fixes the expected
     # answer letters at B, C, B, C, C, B, so each question below places its
     # correct option at that letter. The questions describe rules this
-    # codebase genuinely enforces, but the letters come from the contract
-    # fixture rather than from the questions themselves. If the fixture
-    # changes, the options must be reordered to match.
+    # codebase genuinely enforces, and each marked option was checked against
+    # that behaviour (see D8 in baseline-check.md) -- but the letters themselves
+    # come from the contract fixture. If the fixture changes, the options must
+    # be reordered to match.
     QUESTIONS = {
         1: {
-            "question": "A ticket is open and unassigned. Which status may it move into?",
+            "question": "An open ticket has no assignee. Which status may it move into?",
             "options": {
                 "A": "resolved",
-                "B": "in_progress",
-                "C": "open",
+                "B": "no status — it cannot advance while unassigned",
+                "C": "in_progress",
                 "D": "any status",
             },
             "answer": "B",
