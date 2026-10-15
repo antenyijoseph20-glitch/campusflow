@@ -10,10 +10,10 @@ try:  # discovery run from tests/ (the documented command)
 except ImportError:  # discovery run from the repository root
     from tests.base import CampusFlowTestCase
 
-import inspect
+import json
 
 from campus_flow.quiz import EngineeringQuiz
-from campus_flow.storage import StorageManager
+from campus_flow.search_reports import TicketReports, TicketSearch
 
 
 class TestQuiz(CampusFlowTestCase):
@@ -45,73 +45,88 @@ class TestQuiz(CampusFlowTestCase):
         # (baseline-check.md). Grounding each letter in an observable rule is
         # what makes this test able to fail.
 
-        # Q1: an open, unassigned ticket cannot advance to any status. Each
-        # guard below also pins the reason, so it cannot pass merely because
-        # the ticket was missing.
+        # Q1: an open, unassigned ticket cannot move to in_progress. The reason
+        # is asserted too, so this cannot pass merely because the ticket was
+        # missing.
         created, message = self.manager.create_ticket("Unassigned", "Network", "low", 1)
         self.assertTrue(created, message)
         advanced, reason = self.manager.update_workflow("T001", "in_progress")
         self.assertFalse(advanced)
-        self.assertIn("unassigned", reason.lower())
-        jumped, reason = self.manager.update_workflow("T001", "resolved")
-        self.assertFalse(jumped)
-        self.assertIn("in_progress", reason.lower())
+        self.assertIn("assigned", reason.lower())
 
-        # Q2: urgency 'high' with 5 users is 'high' -- the 'critical' branch
-        # needs 10 or more users, so this pins the boundary.
-        created, message = self.manager.create_ticket("Priority", "Network", "high", 5)
-        self.assertTrue(created, message)
-        self.assertEqual(self.manager.get_ticket("T002")["priority"], "high")
+        # Q2: an empty dataset reports 0.0 rather than dividing by zero.
+        empty_report = TicketReports([])
+        self.assertEqual(empty_report.total, 0)
+        self.assertEqual(empty_report.resolution_percentage(), 0.0)
 
-        # Q5: a note message needs at least 5 characters.
-        too_short, reason = self.manager.add_note("T002", "Dev", "abcd")
-        self.assertFalse(too_short)
-        self.assertIn("5 and 300", reason)
-        long_enough, reason = self.manager.add_note("T002", "Dev", "abcde")
-        self.assertTrue(long_enough, reason)
-
-        # Q3: a resolved ticket rejects assignment and notes until it is
-        # explicitly reopened. The setup steps are asserted in order rather
-        # than collected into one tuple, so a failure stops here instead of
-        # letting the guards below pass against a ticket that never closed.
-        assigned, reason = self.manager.assign_ticket("T002", "Dev")
-        self.assertTrue(assigned, reason)
-        started, reason = self.manager.update_workflow("T002", "in_progress")
-        self.assertTrue(started, reason)
-        closed, reason = self.manager.update_workflow("T002", "resolved")
-        self.assertTrue(closed, reason)
-        self.assertEqual(self.manager.get_ticket("T002")["status"], "resolved")
-
-        locked_assign, reason = self.manager.assign_ticket("T002", "Other")
-        self.assertFalse(locked_assign)
-        self.assertIn("resolved", reason.lower())
-        locked_note, reason = self.manager.add_note("T002", "Dev", "blocked")
-        self.assertFalse(locked_note)
-        self.assertIn("resolved", reason.lower())
-
-        reopened, reason = self.manager.update_workflow("T002", "open")
-        self.assertTrue(reopened, reason)
-
-        # Q4: bool is a subclass of int, so True is rejected rather than
-        # silently counted as one user.
-        boolean_users, reason = self.manager.create_ticket(
-            "Bool", "Network", "low", True
+        # Q3: filters combine with strict AND. A query the ticket matches plus a
+        # category the ticket fails returns nothing, where an OR would return it.
+        reportable = self.manager.list_all_tickets()
+        self.assertEqual(
+            len(TicketSearch.search(reportable, query="Unassigned")), 1
         )
-        self.assertFalse(boolean_users)
-        self.assertIn("boolean", reason.lower())
+        self.assertEqual(
+            TicketSearch.search(reportable, query="Unassigned", category="Hardware"),
+            [],
+        )
 
-        # Q6: the save path is a temporary file followed by os.replace().
-        self.assertIn("os.replace", inspect.getsource(StorageManager.save_tickets))
+        # Q4: a resolved ticket refuses a new note until it is reopened.
+        assigned, reason = self.manager.assign_ticket("T001", "Dev")
+        self.assertTrue(assigned, reason)
+        started, reason = self.manager.update_workflow("T001", "in_progress")
+        self.assertTrue(started, reason)
+        closed, reason = self.manager.update_workflow("T001", "resolved")
+        self.assertTrue(closed, reason)
+
+        refused, reason = self.manager.add_note("T001", "Dev", "A new note.")
+        self.assertFalse(refused)
+        self.assertIn("resolved", reason.lower())
+
+        # Q5: a file holding two records with the same ID is rejected whole, so
+        # the manager starts empty rather than exposing the duplicates.
+        duplicate = [
+            {
+                "id": "T001",
+                "title": "First",
+                "category": "Network",
+                "urgency": "low",
+                "affected_users": 1,
+                "priority": "low",
+                "status": "open",
+                "assigned_to": None,
+                "notes": [],
+            },
+            {
+                "id": "T001",
+                "title": "Second",
+                "category": "Network",
+                "urgency": "low",
+                "affected_users": 1,
+                "priority": "low",
+                "status": "open",
+                "assigned_to": None,
+                "notes": [],
+            },
+        ]
+        with open(self.test_file, "w", encoding="utf-8") as handle:
+            json.dump(duplicate, handle)
+        self.assertEqual(self.reload_manager().list_all_tickets(), [])
+
+        # Q6 is about review practice rather than a code path, so it is grounded
+        # in reasoning: the `assertFalse` above is what makes the unassigned
+        # guard observable. Delete the guard and that assertion fails; delete
+        # the assertion and the guard could be removed without the suite
+        # noticing. A suite that only ever asserts success has the second shape.
 
         # Now translate those rules into the letters they are described by, and
         # require the stored key to agree with all six.
         derived = {
-            1: self._letter_matching_text(1, lambda t: t.startswith("no status")),
-            2: self._letter_matching_text(2, lambda t: t == "high"),
-            3: self._letter_matching_text(3, lambda t: "reopened" in t),
-            4: self._letter_matching_text(4, lambda t: t.startswith("rejected")),
-            5: self._letter_matching_text(5, lambda t: t.startswith("5")),
-            6: self._letter_matching_text(6, lambda t: "os.replace" in t),
+            1: self._letter_matching_text(1, lambda t: "before work can start" in t),
+            2: self._letter_matching_text(2, lambda t: t == "0.0"),
+            3: self._letter_matching_text(3, lambda t: "with and" in t),
+            4: self._letter_matching_text(4, lambda t: "cannot accept new notes" in t),
+            5: self._letter_matching_text(5, lambda t: "rejects the whole file" in t),
+            6: self._letter_matching_text(6, lambda t: "cannot fail" in t),
         }
         key = {n: q["answer"] for n, q in EngineeringQuiz.QUESTIONS.items()}
         self.assertEqual(

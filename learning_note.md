@@ -8,87 +8,101 @@ Run the quiz in Python:
 
 ```python
 from campus_flow.quiz import EngineeringQuiz
-score, results = EngineeringQuiz.grade_quiz({1: "B", 2: "C", 3: "B", 4: "C", 5: "C", 6: "B"})
+key = {n: q["answer"] for n, q in EngineeringQuiz.QUESTIONS.items()}
+score, results = EngineeringQuiz.grade_quiz(key)
 print(score, "/", EngineeringQuiz.total_questions())
 ```
 
-## Q1 — Unassigned tickets cannot start work
+Building the answers from the bank rather than typing them out is deliberate:
+the letters in this file would otherwise be one more place for the key to drift
+out of step with the questions.
 
-**Answer: B — no status; the ticket cannot advance while unassigned.**
+The same check is available from the running application, as option 12 on the
+main menu. There, a choice outside A–D is refused and re-prompted rather than
+counted as a wrong answer, so the score distinguishes "did not know" from "typed
+something that is not an option".
+
+## Q1 — An unassigned ticket cannot start work
+
+**Answer: B — the change is refused; a ticket must be assigned before work starts.**
 
 An open, unassigned ticket has no legal target. `in_progress` is refused because
-nobody owns it, and `resolved` is refused because the work has not started. Both
+nobody owns it, and `resolved` is refused because the work has not started — and
+even once assigned, `open` cannot jump straight to `resolved`. All of these
 guards live in `TicketManager.update_workflow`, so they apply no matter how the
-method is called — not only through the CLI. Rejecting at the model layer is what
-makes the rule testable and consistent.
+method is called, not only through the CLI.
 
 *Discussion point:* why enforce this in the manager rather than the menu? If it
 lived in the CLI, any other caller could bypass it.
 
-## Q2 — Priority precedence
+## Q2 — An empty dataset reports 0.0, not an error
 
-**Answer: C — high.**
+**Answer: C — 0.0.**
 
-The rule in `calculate_priority` is ordered:
+`TicketReports.resolution_percentage` returns `0.0` when there are no tickets at
+all, before it divides anything. The guard is an early return rather than a
+`try`/`except ZeroDivisionError`, so the empty case is a stated answer rather
+than a caught accident.
 
-| Condition | Priority |
-|---|---|
-| urgency `high` **and** users ≥ 10 | critical |
-| urgency `high` **or** users ≥ 10 | high |
-| urgency `medium` **or** users ≥ 3 | medium |
-| otherwise | low |
+*Discussion point:* is `0.0` the honest number for "nothing has happened yet"?
+`None` would distinguish "no data" from "nothing resolved", at the cost of every
+caller handling two types.
 
-`high` with 5 users fails the `critical` test (needs both) but satisfies the
-second rule on urgency alone.
+## Q3 — Every supplied filter must match
 
-*Discussion point:* the order of the branches is the whole rule. Swapping the
-first two would make `critical` unreachable — a good example of precedence bugs.
+**Answer: B — nothing is returned; the filters combine with AND.**
 
-## Q3 — Resolved tickets are locked
+`TicketSearch.matches` returns `False` as soon as any supplied filter fails, so
+a title query the ticket matches cannot rescue it from a category it fails. The
+filters are AND, never OR. An unrecognised filter *name* raises `ValueError`
+instead of being ignored, so a typo is reported rather than silently returning
+too many results.
 
-**Answer: B — it must be explicitly reopened first.**
+*Discussion point:* which failure is worse for a search tool — too many results
+or too few? Silent OR would give the first, silently ignoring a typo the second.
 
-Once resolved, a ticket accepts no further assignment or notes. It returns to
-work only through an explicit reopen to `open`. This prevents a closed ticket
-from silently drifting back into active work.
+## Q4 — A resolved ticket accepts no new notes
 
-*Discussion point:* what would go wrong without the lock? A note added weeks
-later would change a record already reported as finished.
+**Answer: B — the call is refused.**
 
-## Q4 — Booleans are not integers here
+`add_note` accepts only `open` and `in_progress`. Once resolved, a ticket takes
+no further notes and cannot be reassigned; it returns to work only through an
+explicit reopen to `open`. The lock is what stops a record already reported as
+finished from quietly changing afterwards.
 
-**Answer: C — rejected as a boolean.**
+*Discussion point:* the guard is on the status, not on the note's contents — why
+is "this note is only a correction" not something the code can decide?
 
-In Python `bool` is a subclass of `int`, so `True == 1` and `isinstance(True, int)`
-is `True`. A naive `int(value) > 0` check would silently accept `True` as one
-affected user. `create_ticket` therefore tests `isinstance(affected_users, bool)`
-**before** any numeric conversion.
+## Q5 — A duplicated ID rejects the whole file
 
-*Discussion point:* this is a good illustration of why validation order matters,
-and of a genuine Python footgun rather than a hypothetical one.
+**Answer: B — the file is rejected, so the manager starts empty.**
 
-## Q5 — Note length bounds
+`load_tickets` returns `None` on the first problem and `TicketManager` then
+starts from an empty list. It does not keep the first duplicate and drop the
+second: a partially loaded file is harder to reason about than an explicit empty
+start, and silently dropping a record would hide the corruption that caused it.
+Because a rejected load starts empty, the next successful save writes that empty
+list over the file — so a file worth keeping should be copied aside before
+anything is changed.
 
-**Answer: C — 5 characters.**
+*Discussion point:* the alternative is to load what is valid and report the
+rest. What would that require of every caller?
 
-`add_note` requires a message of 5 to 300 characters after stripping
-whitespace, and a non-blank author. A rejected note does not consume a note ID,
-because IDs are derived from the stored notes rather than a separate counter.
+## Q6 — A pull request with no failing test proves less than it appears to
 
-*Discussion point:* deriving the ID means no counter can fall out of sync with
-the data — the trade-off is that deleting a note would allow an ID to be reused.
+**Answer: C — a suite that only covers the happy path cannot fail, so it cannot
+show the feature is correct.**
 
-## Q6 — Atomic saves
+A test that only asserts success passes whether the rule is implemented or not.
+The negative case is what makes the rule observable: in this suite,
+`assertFalse(update_workflow("T001", "in_progress"))` against an unassigned
+ticket is what would fail if the unassigned guard were deleted. Remove the
+assertion and the guard could be removed without the suite noticing — the same
+shape as D4 and D8 in `baseline-check.md`, where tests passed while the feature
+did not exist.
 
-**Answer: B — write a temp file, then `os.replace()`.**
-
-`StorageManager.save_tickets` writes the whole document to `<path>.tmp` and then
-atomically replaces the target. If the write fails midway, the original file is
-untouched; the temp file is cleaned up. Writing straight over the live file
-would risk leaving it truncated.
-
-*Discussion point:* `os.replace` is atomic on the same filesystem, which is why
-the temp file is created beside the target rather than in `/tmp`.
+*Discussion point:* coverage percentages count lines executed, not outcomes
+checked. Which of these two would you put in a review checklist, and why?
 
 ## Cross-cutting themes
 
@@ -101,8 +115,9 @@ the temp file is created beside the target rather than in `/tmp`.
   to verify passes whether or not the feature exists. See D4 in
   `baseline-check.md`.
 - **A test that grades a claim against itself cannot find the claim false.**
-  `test_14` checks the quiz against a fixture, so a question whose marked answer
-  the system actually rejects still scored full marks. See D8.
+  The quiz key was originally the letters the fixture expected, so a question
+  whose marked answer the system actually rejects still scored full marks. See
+  D8.
 
 ## Mentor discussion questions
 
@@ -113,4 +128,7 @@ the temp file is created beside the target rather than in `/tmp`.
 3. `resolution_percentage` returns `0.0` for an empty dataset. Is `0.0` or
    `None` the more honest value for "no tickets yet"?
 4. What would change if two users ran CampusFlow against the same JSON file?
-5. Which of these rules belong in a database constraint rather than in Python?
+5. A rejected load starts empty, and the next save overwrites the file. Is that
+   the right default, or should the application refuse to save until the file is
+   dealt with?
+6. Which of these rules belong in a database constraint rather than in Python?

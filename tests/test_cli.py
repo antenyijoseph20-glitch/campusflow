@@ -20,6 +20,7 @@ from contextlib import redirect_stdout
 from unittest import mock
 
 from campus_flow.cli import CLI
+from campus_flow.quiz import EngineeringQuiz
 
 
 class TestCLI(CampusFlowTestCase):
@@ -217,24 +218,95 @@ class TestCLI(CampusFlowTestCase):
         cli = self.make_cli()
         output = self.run_with_input([], cli._handle_reports)
         self.assertIn("Total Tickets : 0", output)
-        self.assertIn("Resolved      : 0.0%", output)
+        self.assertIn("Resolution    : 0.0%", output)
+
+    def test_reports_break_down_by_category_and_count_resolved(self):
+        cli = self.make_cli()
+        cli.manager.create_ticket("Printer jam", "Hardware", "medium", 2)
+        cli.manager.create_ticket("Wi-Fi down", "Network", "high", 15)
+        cli.manager.assign_ticket("T001", "Alice")
+        cli.manager.update_workflow("T001", "in_progress")
+        cli.manager.update_workflow("T001", "resolved")
+
+        output = self.run_with_input([], cli._handle_reports)
+
+        self.assertIn("Resolved      : 1", output)
+        self.assertIn("Unresolved    : 1", output)
+        self.assertIn("Resolution    : 50.0%", output)
+        self.assertIn("Category Breakdown:", output)
+        self.assertIn("- Hardware: 1", output)
+        self.assertIn("- Network: 1", output)
 
     def test_work_queue_on_an_empty_dataset(self):
         cli = self.make_cli()
         output = self.run_with_input([], cli._handle_work_queue)
         self.assertIn("Work Queue is empty", output)
 
+    def test_search_shows_the_assignee_of_each_match(self):
+        cli = self.make_cli()
+        cli.manager.create_ticket("Printer jam", "Hardware", "medium", 2)
+        cli.manager.assign_ticket("T001", "Alice")
+
+        output = self.run_with_input(["jam", "", "", ""], cli._handle_search)
+
+        self.assertIn("ASSIGNED", output)
+        self.assertIn("Alice", output)
+
+    def test_sorted_search_presents_by_priority_then_id(self):
+        cli = self.make_cli()
+        # Two tickets whose creation order is the reverse of priority order.
+        cli.manager.create_ticket("Low one", "Other", "low", 1)
+        cli.manager.create_ticket("Urgent one", "Network", "high", 15)
+
+        output = self.run_with_input(["one", "", "", ""], cli._handle_sorted_search)
+
+        self.assertIn("sorted by priority then ID", output)
+        self.assertLess(
+            output.index("Urgent one"), output.index("Low one"),
+            "the critical ticket must be listed above the low one",
+        )
+
+    def test_view_notes_lists_each_note_or_says_there_are_none(self):
+        cli = self.make_cli()
+        cli.manager.create_ticket("Printer", "Hardware", "medium", 5)
+
+        empty = self.run_with_input(["T001"], cli._handle_view_notes)
+        self.assertIn("No notes recorded for this ticket.", empty)
+
+        cli.manager.add_note("T001", "Mentor A", "Replaced paper tray.")
+        listed = self.run_with_input(["T001"], cli._handle_view_notes)
+        self.assertIn("Notes for T001 (1)", listed)
+        self.assertIn("[N001] Mentor A: Replaced paper tray.", listed)
+
+    def test_quiz_reprompts_on_an_invalid_choice_then_scores(self):
+        cli = self.make_cli()
+        # Six questions. Answer the first wrongly, then retry it; the rest use
+        # the stored key. Scoring the handler is what is under test here -- that
+        # the key itself is right is test_quiz.py's job, where each letter is
+        # derived by exercising the rule the question asks about.
+        key = [
+            EngineeringQuiz.QUESTIONS[n]["answer"]
+            for n in sorted(EngineeringQuiz.QUESTIONS)
+        ]
+        wrong_first = "A" if key[0] != "A" else "B"
+        answers = ["Z", wrong_first] + key[1:]
+
+        output = self.run_with_input(answers, cli._handle_quiz)
+
+        self.assertIn("Please enter A, B, C or D.", output)
+        self.assertIn(f"Score: 5/{len(key)} (83%)", output)
+
     # ---------- the menu loop ----------
 
-    def test_run_exits_on_choice_ten(self):
+    def test_run_exits_on_choice_thirteen(self):
         cli = self.make_cli()
-        output = self.run_with_input(["10"], cli.run)
+        output = self.run_with_input(["13"], cli.run)
         self.assertIn("Welcome to CampusFlow", output)
         self.assertIn("Exiting CampusFlow. Goodbye!", output)
 
     def test_run_rejects_an_invalid_choice_and_keeps_going(self):
         cli = self.make_cli()
-        output = self.run_with_input(["99", "10"], cli.run)
+        output = self.run_with_input(["99", "13"], cli.run)
 
         self.assertIn("Invalid choice", output)
         self.assertIn("Exiting CampusFlow. Goodbye!", output)
@@ -244,7 +316,7 @@ class TestCLI(CampusFlowTestCase):
         cli.manager.create_ticket("Printer jam", "Hardware", "medium", 2)
 
         # Choose 2 (list), then exit.
-        output = self.run_with_input(["2", "10"], cli.run)
+        output = self.run_with_input(["2", "13"], cli.run)
 
         self.assertIn("--- All Tickets (1) ---", output)
         self.assertIn("Printer jam", output)

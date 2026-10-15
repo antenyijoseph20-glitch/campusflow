@@ -11,74 +11,85 @@ VALID_CHOICES = ("A", "B", "C", "D")
 class EngineeringQuiz:
     """Static question bank plus a strict grader."""
 
+    # The six questions the review asks for, each about a rule the code
+    # actually enforces: the unassigned guard, the empty-dataset report, strict
+    # AND filtering, the resolved lock on notes, duplicate IDs at load time, and
+    # why a pull request with no negative test is not evidence.
+    #
     # Each question places its correct option at the letter recorded in
-    # "answer", and tests/test_quiz.py derives that letter
-    # independently: it exercises the rule the question is about, then locates
-    # the matching option by its wording rather than by its position. Reordering
-    # a question's options is therefore safe as long as "answer" is updated to
-    # whichever option still describes the enforced rule. A key that disagrees
-    # with the code fails the suite instead of passing it -- which is what
-    # happened before D8 was fixed (see baseline-check.md).
+    # "answer", and tests/test_quiz.py derives that letter independently: it
+    # exercises the rule the question is about, then locates the matching option
+    # by its wording rather than by its position. Reordering a question's options
+    # is therefore safe as long as "answer" is updated to whichever option still
+    # describes the enforced rule. A key that disagrees with the code fails the
+    # suite instead of passing it -- which is what happened before D8 was fixed
+    # (see baseline-check.md).
     QUESTIONS = {
         1: {
-            "question": "An open ticket has no assignee. Which status may it move into?",
+            "question": (
+                "An open ticket has no assignee. What does update_workflow() do "
+                "when it is asked to move that ticket to in_progress?"
+            ),
             "options": {
-                "A": "resolved",
-                "B": "no status — it cannot advance while unassigned",
-                "C": "in_progress",
-                "D": "any status",
+                "A": "Moves it to in_progress and leaves it unassigned",
+                "B": "Refuses the change: a ticket must be assigned before work can start",
+                "C": "Skips in_progress and resolves the ticket instead",
+                "D": "Raises KeyError because the assignee is missing",
             },
             "answer": "B",
         },
         2: {
-            "question": "Urgency is 'high' and affected_users is 5. What priority results?",
+            "question": "The dataset holds no tickets at all. What does resolution_percentage() return?",
             "options": {
-                "A": "critical",
-                "B": "medium",
-                "C": "high",
-                "D": "low",
+                "A": "It raises ZeroDivisionError",
+                "B": "100.0",
+                "C": "0.0",
+                "D": "None",
             },
             "answer": "C",
         },
         3: {
-            "question": "How is a resolved ticket modified before further work?",
+            "question": (
+                "A search supplies a title query the ticket matches and a category "
+                "filter the ticket fails. What does the search return?"
+            ),
             "options": {
-                "A": "It can be reassigned freely",
-                "B": "It must be explicitly reopened",
-                "C": "Notes may still be appended to it",
-                "D": "It is archived and deleted",
+                "A": "The ticket, because the title query matched",
+                "B": "Nothing: every supplied filter must match, so they combine with AND",
+                "C": "The ticket, because filters are combined with OR",
+                "D": "A ValueError, because the two filters conflict",
             },
             "answer": "B",
         },
         4: {
-            "question": "Python's bool is a subclass of int. How is True handled as affected_users?",
+            "question": "A ticket is already 'resolved'. What happens when add_note() is called on it?",
             "options": {
-                "A": "Accepted as 1 user",
-                "B": "Accepted as 0 users",
-                "C": "Rejected as a boolean",
-                "D": "Converted to the string 'True'",
-            },
-            "answer": "C",
-        },
-        5: {
-            "question": "What is the minimum accepted length of a note message?",
-            "options": {
-                "A": "1 character",
-                "B": "3 characters",
-                "C": "5 characters",
-                "D": "10 characters",
-            },
-            "answer": "C",
-        },
-        6: {
-            "question": "How does save_tickets() reduce the risk of corrupting stored data?",
-            "options": {
-                "A": "It appends to the existing file",
-                "B": "It writes a temp file, then os.replace() swaps it in",
-                "C": "It keeps all state in memory only",
-                "D": "It writes a second JSON backup file",
+                "A": "The note is appended as normal",
+                "B": "The call is refused: a resolved ticket cannot accept new notes",
+                "C": "The note is appended and the ticket is reopened automatically",
+                "D": "The ticket is deleted along with its notes",
             },
             "answer": "B",
+        },
+        5: {
+            "question": "A tickets.json file contains two records whose id is both 'T001'. What does load_tickets() do?",
+            "options": {
+                "A": "Loads both records and lets the duplicate resolve at lookup time",
+                "B": "Rejects the whole file, so the manager starts empty rather than exposing duplicates",
+                "C": "Keeps the first record and silently drops the second",
+                "D": "Renumbers the second record to T002",
+            },
+            "answer": "B",
+        },
+        6: {
+            "question": "A pull request adds a feature but no test that exercises a failing case. Why is that a problem?",
+            "options": {
+                "A": "It is not a problem: a passing test suite is what matters",
+                "B": "Because extra tests slow the suite down",
+                "C": "Because a suite that only covers the happy path cannot fail, so it cannot show the feature is correct",
+                "D": "Because reviewers prefer larger pull requests",
+            },
+            "answer": "C",
         },
     }
 

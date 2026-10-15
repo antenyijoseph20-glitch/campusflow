@@ -1,5 +1,6 @@
 from campus_flow.models import TicketManager
-from campus_flow.search_reports import TicketReports, TicketSearch
+from campus_flow.quiz import EngineeringQuiz
+from campus_flow.search_reports import TicketReports, TicketSearch, sort_by_priority
 
 
 class CLI:
@@ -59,9 +60,12 @@ class CLI:
             "4": self._handle_assign,
             "5": self._handle_workflow,
             "6": self._handle_add_note,
-            "7": self._handle_search,
-            "8": self._handle_work_queue,
-            "9": self._handle_reports,
+            "7": self._handle_view_notes,
+            "8": self._handle_search,
+            "9": self._handle_sorted_search,
+            "10": self._handle_work_queue,
+            "11": self._handle_reports,
+            "12": self._handle_quiz,
         }
 
         while True:
@@ -72,20 +76,23 @@ class CLI:
             print("4. Assign Ticket")
             print("5. Update Ticket Status (Workflow)")
             print("6. Add Note to Ticket")
-            print("7. Search Tickets")
-            print("8. View Work Queue")
-            print("9. Generate Reports")
-            print("10. Exit")
+            print("7. View Ticket Notes")
+            print("8. Search Tickets")
+            print("9. Search Tickets Sorted by Priority")
+            print("10. View Open Work Queue")
+            print("11. Generate Reports")
+            print("12. Engineering Understanding Check")
+            print("13. Exit")
 
-            choice = input("Select an option (1-10): ").strip()
+            choice = input("Select an option (1-13): ").strip()
 
-            if choice == "10":
+            if choice == "13":
                 print("Exiting CampusFlow. Goodbye!")
                 return
 
             handler = actions.get(choice)
             if not handler:
-                print("Error: Invalid choice. Please enter a number between 1 and 10.")
+                print("Error: Invalid choice. Please enter a number between 1 and 13.")
                 continue
 
             try:
@@ -182,6 +189,27 @@ class CLI:
         self._report(self.manager.add_note(ticket_id, author, message))
 
     def _handle_search(self):
+        """Search with optional filters, presented in the order found."""
+        results = self._search_interactively()
+        if results is None:
+            return
+        self._print_tickets(results, "Match(es)")
+
+    def _handle_sorted_search(self):
+        """The same search, presented by priority weight then ticket ID."""
+        results = self._search_interactively()
+        if results is None:
+            return
+        self._print_tickets(
+            sort_by_priority(results), "Match(es), sorted by priority then ID"
+        )
+
+    def _search_interactively(self):
+        """Prompt for the optional filters. Returns matches, or None on error.
+
+        Both search views share this so the filters they offer cannot drift
+        apart, and so an unknown filter name is reported in one place.
+        """
         print("\n--- Search Tickets ---")
         print("Press Enter to skip any filter.")
         query = self._ask_optional("Title contains: ")
@@ -190,7 +218,7 @@ class CLI:
         priority = self._ask_optional("Priority (critical/high/medium/low): ")
 
         try:
-            results = TicketSearch.search(
+            return TicketSearch.search(
                 self.manager.list_all_tickets(),
                 query=query,
                 category=category,
@@ -199,30 +227,56 @@ class CLI:
             )
         except ValueError as error:
             print(f"Error: {error}")
-            return
+            return None
 
-        if not results:
+    def _print_tickets(self, tickets, label):
+        """Render a ticket list, or say so when there is nothing to render."""
+        if not tickets:
             print("\nNo tickets matched those filters.")
             return
 
         rows = [
-            (t["id"], t["status"], t["priority"], t["category"], t["title"])
-            for t in results
+            (
+                t["id"],
+                t["status"],
+                t["priority"],
+                t["category"],
+                t["assigned_to"] or "Unassigned",
+                t["title"],
+            )
+            for t in tickets
         ]
-        print(f"\n--- {len(results)} Match(es) ---")
-        self._print_table(rows, ("ID", "STATUS", "PRIORITY", "CATEGORY", "TITLE"))
+        print(f"\n--- {len(tickets)} {label} ---")
+        self._print_table(
+            rows, ("ID", "STATUS", "PRIORITY", "CATEGORY", "ASSIGNED", "TITLE")
+        )
+
+    def _handle_view_notes(self):
+        ticket = self.manager.get_ticket(self._ask("Enter Ticket ID (e.g. T001): "))
+        if not ticket:
+            print("Error: Ticket not found.")
+            return
+
+        notes = ticket.get("notes", [])
+        print(f"\n--- Notes for {ticket['id']} ({len(notes)}) ---")
+        if not notes:
+            print("No notes recorded for this ticket.")
+            return
+
+        for note in notes:
+            print(f"[{note['note_id']}] {note['author']}: {note['message']}")
 
     def _handle_work_queue(self):
         queue = self.manager.get_work_queue()
         if not queue:
-            print("\nWork Queue is empty (no open or in-progress tickets).")
+            print("\nOpen Work Queue is empty (no tickets are waiting to be picked up).")
             return
 
         rows = [
             (t["id"], t["priority"], t["status"], t["assigned_to"] or "Unassigned", t["title"])
             for t in queue
         ]
-        print(f"\n--- Active Work Queue ({len(queue)}) ---")
+        print(f"\n--- Open Work Queue ({len(queue)}) ---")
         self._print_table(rows, ("ID", "PRIORITY", "STATUS", "ASSIGNED", "TITLE"))
 
     def _handle_reports(self):
@@ -230,16 +284,59 @@ class CLI:
 
         print("\n--- CampusFlow System Report ---")
         print(f"Total Tickets : {report['total']}")
+        print(f"Resolved      : {report['resolved']}")
         print(f"Unresolved    : {report['unresolved']}")
-        print(f"Resolved      : {report['resolution_percentage']:.1f}%")
+        print(f"Resolution    : {report['resolution_percentage']:.1f}%")
 
         print("\nStatus Breakdown:")
         for status, count in report["status_breakdown"].items():
             print(f"  - {status}: {count}")
 
+        print("\nCategory Breakdown:")
+        for category, count in report["category_breakdown"].items():
+            print(f"  - {category}: {count}")
+
         print("\nPriority Breakdown:")
         for priority, count in report["priority_breakdown"].items():
             print(f"  - {priority}: {count}")
+
+    def _handle_quiz(self):
+        """Run the Engineering Understanding Check interactively.
+
+        A choice outside A-D is refused and re-prompted rather than counted as
+        a wrong answer, so the score distinguishes "did not know" from "typed
+        something that is not an option".
+        """
+        questions = EngineeringQuiz.QUESTIONS
+        print("\n--- Engineering Understanding Check ---")
+        print(f"{len(questions)} questions. Answer each with A, B, C or D.")
+
+        answers = {}
+        for number in sorted(questions):
+            entry = questions[number]
+            print(f"\nQ{number}. {entry['question']}")
+            for letter, text in entry["options"].items():
+                print(f"   {letter}) {text}")
+
+            while True:
+                raw = input("Your answer (A-D): ").strip().upper()
+                if EngineeringQuiz.is_valid_choice(raw):
+                    answers[number] = raw
+                    break
+                print("Error: Please enter A, B, C or D.")
+
+        score, results = EngineeringQuiz.grade_quiz(answers)
+        total = EngineeringQuiz.total_questions()
+        percentage = (score / total * 100) if total else 0.0
+
+        print(f"\nScore: {score}/{total} ({percentage:.0f}%)")
+        for result in results:
+            verdict = (
+                "correct"
+                if result["correct"]
+                else f"incorrect (correct answer: {result['expected']})"
+            )
+            print(f"  Q{result['question']}: {result['choice']} - {verdict}")
 
 
 def main():
