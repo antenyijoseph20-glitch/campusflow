@@ -236,6 +236,86 @@ Clear documentation is part of software quality. It reduces uncertainty for main
 
 Update documentation alongside meaningful code changes and verify all documented commands.
 
+## Engineer Cycles
+
+Each cycle records the original gap, the prompt used, how the result was
+verified, and the decision taken.
+
+### Engineer A — Cycle 1: Storage validation and atomic saves
+
+**Original gap.** Ticket data was written straight over the JSON file. A failure
+partway through a write could truncate the file, and corrupt data on disk was
+loaded without complaint.
+
+**Prompt.** Add schema validation on load and atomic replacement on save, and
+reject malformed files instead of crashing.
+
+**Verification.** Wrote corrupt files by hand (malformed JSON, a non-array root,
+duplicated ticket IDs) and confirmed the manager starts empty rather than
+raising or exposing bad records. Confirmed a save leaves the original file
+intact when the write fails.
+
+**Decision.** Kept `StorageManager` as the single persistence boundary, with
+`load_tickets` returning `None` on rejection so the caller decides the fallback.
+Rejected returning partial data, because a partially loaded file is harder to
+reason about than an explicit empty start.
+
+### Engineer A — Cycle 2: Note ID continuity and rollback
+
+**Original gap.** Note IDs risked restarting at `N001` after a reload, and a
+failed save left memory describing a change that was never persisted.
+
+**Prompt.** Make note IDs survive a reload, and make the in-memory state agree
+with disk when a save fails.
+
+**Verification.** Created a ticket with a note, constructed a second manager over
+the same file, added another note, and confirmed it received `N002`. Then
+replaced `save_tickets` with a failing stub and confirmed each mutator restored
+the value it had replaced.
+
+**Decision.** Derive the note ID from the stored notes rather than keeping a
+separate counter, so the counter cannot fall out of sync with the data. Roll
+back by restoring the previous value in the mutator, which keeps the recovery
+path next to the change it undoes.
+
+### Engineer B — Cycle 1: Search and reporting
+
+**Original gap.** The test matrix specified search and reporting tests, but
+nothing implemented them. Three tests (`test_08`, `test_09`, `test_10`)
+re-implemented the expected logic inline, so they passed without any feature
+existing — the coverage claim was false.
+
+**Prompt.** Implement case-insensitive substring search with strict AND filters,
+and reporting that is safe on an empty dataset, then replace the inline
+assertions with tests that call the real code.
+
+**Verification.** Searched a known fixture with mixed-case queries, confirmed a
+lowercase category filter matched the canonical stored value, confirmed that
+adding a filter the ticket fails empties the result set, and confirmed an empty
+dataset reports `0.0` without raising.
+
+**Decision.** Kept search and reporting in `search_reports.py` rather than
+`models.py`, so the manager stays focused on state transitions. Made an unknown
+filter name raise `ValueError` instead of being ignored, so a typo is reported
+rather than returning misleading results.
+
+### Engineer B — Cycle 2: The Engineering Understanding Check
+
+**Original gap.** `test_14` imported `EngineeringQuiz` from a module that no
+longer existed after the package was renamed, so the whole test file failed to
+collect.
+
+**Prompt.** Implement the quiz with strict grading that rejects invalid choices
+rather than counting them as wrong answers.
+
+**Verification.** Graded the answer fixture and confirmed a score of 6. Then
+submitted an out-of-range choice and confirmed it was flagged invalid and
+scored 0, and confirmed answers are accepted case- and whitespace-insensitively.
+
+**Decision.** Treat a choice outside A–D as invalid and record it separately
+from an incorrect answer, so the result distinguishes "did not know" from "gave
+a value that is not an option".
+
 ## Current Verification Checklist
 
 Use this checklist when performing a project review. Mark items only after running the corresponding checks.
