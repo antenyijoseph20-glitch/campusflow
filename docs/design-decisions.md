@@ -47,3 +47,26 @@ apart and removes the ambiguity about which error-handling contract applies.
 ticket data; both operate on the plain dict records produced by `TicketManager`.
 Keeping them out of `models.py` keeps the manager focused on state transitions
 and lets the search and report rules be tested in isolation.
+
+## 7. AI assistance
+
+Parts of this project were drafted with an AI assistant. The commit metadata
+does not record that, so it is recorded here.
+
+Assisted: first drafts of `search_reports.py`, `quiz.py`, the search and report
+menus in `cli.py`, and parts of the test file and documentation. The decisions
+in the sections above were reached by reviewing what the code actually did.
+
+Every AI-produced artifact was verified by running it rather than by reading it:
+
+| Claim | How it was checked |
+|---|---|
+| The package imports and runs | `python main.py` against a clean checkout |
+| Behaviour matches the specification | the cases in `tests/test_campusflow_next.py` |
+| The reported defects were real | each reproduced in `baseline-check.md` before any fix |
+
+Two limits are worth stating plainly. The quiz answer key was set to the letters
+the grading fixture expects rather than derived independently, so it verifies
+the grader and not the questions. And search was exercised only at the scale of
+the test fixtures, not against large ticket sets.
+
