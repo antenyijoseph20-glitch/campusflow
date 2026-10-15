@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=61.0"]
+requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -7,6 +7,7 @@ name = "campus-flow"
 version = "0.1.0"
 description = "A Python command-line IT support ticket manager"
 requires-python = ">=3.8"
+license = "MIT"
 dependencies = []
 
 [tool.pytest.ini_options]

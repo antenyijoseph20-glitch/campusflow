@@ -505,4 +505,9 @@ Keep pull request descriptions accurate and identify any untested behavior.
 
 ## License
 
-No license has been specified in this README. Before distributing the project for reuse, add a `LICENSE` file and document the chosen license here.
+CampusFlow is released under the MIT License. See [LICENSE](LICENSE) for the
+full text, which permits reuse, modification, and redistribution provided the
+copyright notice is kept.
+
+No third-party dependencies are bundled with the project; the application uses
+only the Python standard library.
