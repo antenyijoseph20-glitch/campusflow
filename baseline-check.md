@@ -301,4 +301,3 @@ The third row is the one that matters. Without it, a rejection could come from
 the urgency or the affected-user count rather than from the contradiction, and
 the test would pass for the wrong reason. All three are asserted by
 `test_load_rejects_a_priority_that_contradicts_its_own_inputs`.
-
