@@ -37,8 +37,8 @@ CampusFlow has tests covering ticket models, workflow behavior, search, reportin
 **Verification commands:**
 
 ```bash
-PYTHONPATH=src python -m unittest discover -s tests -v
-PYTHONPATH=src python -m unittest discover -s tests -q
+python3 -m unittest discover -s tests -v
+python3 -m unittest discover -s tests -q
 ```
 
 **Lesson learned:**
@@ -332,8 +332,8 @@ Use this checklist when performing a project review. Mark items only after runni
 Example commands:
 
 ```bash
-PYTHONPATH=src python -m unittest discover -s tests -v
-python -m compileall -q src tests
+python3 -m unittest discover -s tests -v
+python3 -m compileall -q src tests
 git diff --check
 ```
 

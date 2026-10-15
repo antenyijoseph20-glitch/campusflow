@@ -22,6 +22,17 @@ Tickets are stored as JSON. Saving uses a temporary file followed by
 replacement of the target file to reduce the risk of truncating existing
 data during a failed save.
 
+Loading validates the shape of the document before accepting it: the root must
+be an array, each entry must be an object carrying all nine ticket fields, and
+IDs must be present and unique. A document that fails any of these is rejected
+whole. Rejecting the entire file rather than skipping bad records keeps the
+in-memory list a faithful copy of the file, so no caller can observe a partial
+load without knowing it.
+
+This validates structure, not values. A record with a well-formed but illegal
+`status` (say `"closed"`) loads successfully, because deciding which values are
+legal belongs to `TicketManager`, not to the storage layer.
+
 ## 4. Automated tests
 
 The suite lives in a single file, `tests/test_campusflow_next.py`, and covers

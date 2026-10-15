@@ -113,13 +113,21 @@ that are not present.
 ## 6. How to verify
 
 ```bash
-PYTHONPATH=src python3 -m unittest discover -s tests -v
+python3 -m unittest discover -s tests -v
 python3 -m compileall -q src tests
 git diff --check
 ```
 
-`PYTHONPATH=src` is required because the package lives under `src/` and
-`unittest` does not read the `pythonpath` setting in `pyproject.toml`.
+Run `python3 -m pip install -e .` first so that the application can find the
+`campus_flow` package under `src/`. The test command itself does not depend on
+that install: `unittest` does not read the `pythonpath` setting in
+`pyproject.toml`, so `tests/test_campusflow_next.py` adds `src/` to the import
+path before importing the package.
+
+That setup cannot live in `tests/__init__.py`. Discovery with `-s tests` and no
+`-t` takes `tests/` as its top-level directory, so it walks the folder as plain
+modules and never imports the package — the first attempt at this fix did
+exactly that and failed with `ModuleNotFoundError`.
 
 Record the actual output. Do not mark an item verified without running it.
 
@@ -165,6 +173,15 @@ arguments before type-checking, so an `int` title escaped as an
 `AttributeError` rather than returning `(False, message)` like every other
 invalid input.
 
+**D15 — Load validated the ID but not the rest of the record.** `load_tickets`
+checked that each entry was an object with a unique `id`, and nothing else. A
+file whose record omitted `status` loaded without complaint, because the
+duplicate-ID check passed, and then raised `KeyError` in `get_work_queue` and
+in both report methods, which read `t["status"]` directly. The failure surfaced
+at first use rather than at load, which is the point at which the storage layer
+was supposed to have rejected it. D14 and D15 are the same defect in two
+places: a validation gap that arrives as an exception instead of a message.
+
 ### Remediation
 
 - D8: reworded Q1 so the marked option is the one the code actually permits,
@@ -174,6 +191,9 @@ invalid input.
 - D10–D13: corrected the affected documents.
 - D14: added `isinstance` checks ahead of every `.strip()` call, with cases in
   `test_04`.
+- D15: `load_tickets` now requires every record to carry all nine ticket fields,
+  rejecting the file whole if any record is incomplete, with cases in `test_13`
+  covering both a missing field and a non-object entry.
 - Removed a bare `except:` in `storage.py`.
 
 ### What this review did not catch

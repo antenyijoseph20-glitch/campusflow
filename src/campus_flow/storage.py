@@ -4,6 +4,21 @@ import os
 class StorageManager:
     """Handles safe, atomic JSON file persistence and schema validation."""
 
+    # Every stored record must carry these keys. The manager and the reporting
+    # classes read them directly, so a record missing one would load cleanly and
+    # then raise KeyError on first use.
+    REQUIRED_FIELDS = (
+        "id",
+        "title",
+        "category",
+        "urgency",
+        "affected_users",
+        "priority",
+        "status",
+        "assigned_to",
+        "notes",
+    )
+
     def __init__(self, filepath="tickets.json"):
         self.filepath = filepath
 
@@ -25,12 +40,22 @@ class StorageManager:
                         print("Error: JSON root is not a list. Load rejected.")
                     return None
                 
-                # Edge case: Check for duplicate IDs during load
+                # Edge case: every record must be an object with the required
+                # fields, and IDs must be present and unique.
                 validated_tickets = []
                 seen_ids = set()
                 for t in data:
                     if not isinstance(t, dict):
+                        if not silent:
+                            print("Error: Ticket record is not an object. Load rejected.")
                         return None
+
+                    missing = [f for f in self.REQUIRED_FIELDS if f not in t]
+                    if missing:
+                        if not silent:
+                            print(f"Error: Ticket record is missing {missing}. Load rejected.")
+                        return None
+
                     t_id = t.get("id")
                     if not t_id or t_id in seen_ids:
                         if not silent:

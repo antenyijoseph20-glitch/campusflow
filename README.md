@@ -8,6 +8,7 @@ The project emphasizes clear separation of responsibilities, input validation, r
 
 ## Table of Contents
 
+- [Quick Start](#quick-start)
 - [Overview](#overview)
 - [Features](#features)
 - [Technology Stack](#technology-stack)
@@ -22,6 +23,28 @@ The project emphasizes clear separation of responsibilities, input validation, r
 - [Future Improvements](#future-improvements)
 - [Contributing](#contributing)
 - [License](#license)
+
+## Quick Start
+
+From a fresh clone, in four commands:
+
+```bash
+git clone https://github.com/antenyijoseph20-glitch/campusflow.git
+cd campusflow
+python3 -m pip install -e .
+python3 -m unittest discover -s tests -v
+```
+
+The install step is what lets the *application* find the `campus_flow` package
+under `src/`. The tests do not need it: the test module adds `src/` to the
+import path itself, so the suite runs from a fresh clone even before it is
+installed.
+
+Run the application with:
+
+```bash
+python3 main.py
+```
 
 ## Overview
 
@@ -138,20 +161,20 @@ source venv/bin/activate
 Upgrade pip:
 
 ```bash
-python -m pip install --upgrade pip
+python3 -m pip install --upgrade pip
 ```
 
-Install the project and its dependencies using the repository's packaging configuration:
+Install the project so that `campus_flow` is importable:
 
 ```bash
-python -m pip install -e .
+python3 -m pip install -e .
 ```
 
 `pytest` is optional. The suite is written with `unittest` and runs without it;
 install pytest only if you prefer that runner:
 
 ```bash
-python -m pip install pytest
+python3 -m pip install pytest
 ```
 
 > If editable installation fails, check the build-system and dependency configuration in `pyproject.toml` before changing the installation instructions.
@@ -161,14 +184,14 @@ python -m pip install pytest
 From the project root, with the virtual environment activated, run:
 
 ```bash
-python main.py
+python3 main.py
 ```
 
 If the package has not been installed with `pip install -e .`, point Python at
 the source directory instead:
 
 ```bash
-PYTHONPATH=src python main.py
+PYTHONPATH=src python3 main.py
 ```
 
 Follow the on-screen menu to select an available operation.
@@ -260,9 +283,11 @@ The file contains a single JSON array of ticket objects:
 
 ### Loading and saving
 
-On load, the file must parse as JSON and its root must be an array. Records
-without an `id`, and duplicate IDs, cause the load to be rejected; the manager
-then starts from an empty list rather than exposing corrupt data.
+On load, the file must parse as JSON and its root must be an array. Every record
+must be an object carrying all nine ticket fields, with a present and unique
+`id`. A record that is not an object, is missing a field, or repeats an ID
+causes the load to be rejected, and the manager then starts from an empty list
+rather than exposing corrupt data.
 
 A rejected load therefore starts empty, and the next successful save writes that
 empty list over the original file. If a file is rejected, copy it aside before
@@ -278,34 +303,43 @@ Before manually editing or deleting `tickets.json`, make a backup if its content
 
 ## Testing
 
-Run the automated test suite from the repository root:
+Run the suite from the repository root:
 
 ```bash
-PYTHONPATH=src python -m unittest discover -s tests -v
+python3 -m unittest discover -s tests -v
 ```
 
-`PYTHONPATH=src` is required because the package lives under `src/`: `unittest`
-does not read the `pythonpath` setting in `pyproject.toml`. The prefix is
-unnecessary once the package has been installed with `pip install -e .`.
-
-Run the tests in quiet mode:
+Quiet mode:
 
 ```bash
-PYTHONPATH=src python -m unittest discover -s tests -q
+python3 -m unittest discover -s tests -q
 ```
+
+This works from a fresh clone, with or without `pip install -e .`. `unittest`
+does not read the `pythonpath` setting in `pyproject.toml`, and the `src/`
+layout would otherwise leave `campus_flow` unimportable, so the test module puts
+`src/` on the import path before importing the package. Discovery with
+`-s tests` and no `-t` treats `tests/` as the top-level directory, which means
+`tests/__init__.py` is never imported — the setup has to happen in the module
+itself.
+
+Installing the package remains the recommended setup and is what the application
+needs; the bootstrap exists so the verification command is a single line with no
+prerequisite. Because it inserts `src/` ahead of anything installed, the suite
+always exercises the working tree rather than an installed copy.
 
 The suite is written with `unittest`; `pytest` is not required. If it is
 installed, the same tests also run under it, reading the source path from
-`pyproject.toml` so no prefix is needed:
+`pyproject.toml`:
 
 ```bash
-python -m pytest -q
+python3 -m pytest -q
 ```
 
 Check the source and test files for compilation errors:
 
 ```bash
-python -m compileall -q src tests
+python3 -m compileall -q src tests
 ```
 
 Check for whitespace errors in the Git diff:
@@ -330,7 +364,8 @@ two bug-hunter checks.
 - Empty-dataset reporting without a division-by-zero crash.
 - Report counts staying in step with the ticket list after resolve/reopen.
 - JSON round-trip of tickets, notes, and next IDs.
-- Rejection of malformed JSON, a non-array root, and duplicate ticket IDs.
+- Rejection of malformed JSON, a non-array root, duplicate ticket IDs, records
+  missing required fields, and records that are not objects.
 - Rollback of in-memory state when a save fails.
 - Engineering Understanding Check scoring and rejection of invalid choices.
 
@@ -387,8 +422,8 @@ Contributions, code reviews, and suggestions are welcome.
 Example validation commands:
 
 ```bash
-PYTHONPATH=src python -m unittest discover -s tests -v
-python -m compileall -q src tests
+python3 -m unittest discover -s tests -v
+python3 -m compileall -q src tests
 git diff --check
 ```
 Keep pull request descriptions accurate and identify any untested behavior.

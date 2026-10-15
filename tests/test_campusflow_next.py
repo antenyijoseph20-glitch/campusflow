@@ -1,8 +1,24 @@
 import json
 import os
 import shutil
+import sys
 import tempfile
 import unittest
+
+# The application package lives under src/, and `unittest` does not read the
+# `pythonpath` setting in pyproject.toml. Discovery with `-s tests` and no `-t`
+# sets its top-level directory to tests/ itself, so it walks that folder as a
+# plain directory of modules: tests/__init__.py is never imported and cannot
+# put src/ on the path for us. Doing it here keeps
+#
+#     python3 -m unittest discover -s tests -v
+#
+# working from a fresh clone that has not run `pip install -e .`.
+_SRC = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "src"
+)
+if _SRC not in sys.path:
+    sys.path.insert(0, _SRC)
 
 from campus_flow.models import TicketManager
 from campus_flow.quiz import EngineeringQuiz
@@ -295,6 +311,20 @@ class TestCampusFlowNext(unittest.TestCase):
             json.dump({"id": "T001"}, f)
         wrong_root = TicketManager(filepath=self.test_file, silent_load=True)
         self.assertEqual(wrong_root.list_all_tickets(), [])
+
+        # A record missing required fields is rejected rather than loaded and
+        # then raising KeyError the first time the work queue reads it.
+        with open(self.test_file, "w", encoding="utf-8") as f:
+            json.dump([{"id": "T001", "title": "Incomplete"}], f)
+        incomplete = TicketManager(filepath=self.test_file, silent_load=True)
+        self.assertEqual(incomplete.list_all_tickets(), [])
+        self.assertEqual(incomplete.get_work_queue(), [])
+
+        # A record whose value is not an object is rejected too.
+        with open(self.test_file, "w", encoding="utf-8") as f:
+            json.dump(["not-a-ticket"], f)
+        not_an_object = TicketManager(filepath=self.test_file, silent_load=True)
+        self.assertEqual(not_an_object.list_all_tickets(), [])
 
         # A failed save must roll the in-memory change back, leaving memory
         # consistent with what is on disk (README: rollback on persistence
