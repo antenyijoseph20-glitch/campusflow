@@ -5,10 +5,12 @@ import tempfile
 import unittest
 
 from campus_flow.models import TicketManager
+from campus_flow.quiz import EngineeringQuiz
+from campus_flow.search_reports import TicketReports, TicketSearch
 
 
 class TestCampusFlowNext(unittest.TestCase):
-    """CampusFlow verification suite — validation, workflow, notes, and persistence."""
+    """Unified test suite for CampusFlow Next covering all 16 required verification tests."""
 
     def setUp(self):
         # Each test gets an isolated directory so nothing lands in the repo root.
@@ -112,6 +114,108 @@ class TestCampusFlowNext(unittest.TestCase):
         self.assertTrue(success)
         self.assertEqual(len(self.manager.get_ticket("T001")["notes"]), 1)
 
+    # 8. Search title ignores case, matching substring
+    def test_08_case_insensitive_substring_search(self):
+        self.manager.create_ticket("Campus Wi-Fi Outage in Block A", "Network", "high", 20)
+        self.manager.create_ticket("Printer jam in Library", "Hardware", "medium", 2)
+        tickets = self.manager.list_all_tickets()
+
+        # Lower-case query must match the mixed-case title.
+        results = TicketSearch.search(tickets, query="wi-fi")
+        self.assertEqual([t["id"] for t in results], ["T001"])
+
+        # Upper-case query matches the same ticket.
+        self.assertEqual(
+            [t["id"] for t in TicketSearch.search(tickets, query="WI-FI")], ["T001"]
+        )
+
+        # A substring in the middle of the title also matches.
+        self.assertEqual(
+            [t["id"] for t in TicketSearch.search(tickets, query="outage")], ["T001"]
+        )
+
+        # A query matching nothing returns no results rather than raising.
+        self.assertEqual(TicketSearch.search(tickets, query="nonexistent"), [])
+
+    # 9. Combined search filters use AND
+    def test_09_combined_search_filters_and(self):
+        self.manager.create_ticket("Network switch error", "Network", "high", 15)
+        self.manager.create_ticket("Network printer jam", "Hardware", "medium", 2)
+        tickets = self.manager.list_all_tickets()
+
+        # category=Network AND urgency=high -> only T001.
+        results = TicketSearch.search(tickets, category="Network", urgency="high")
+        self.assertEqual([t["id"] for t in results], ["T001"])
+
+        # Adding a filter that T001 fails must empty the result set (strict AND).
+        self.assertEqual(
+            TicketSearch.search(tickets, category="Network", urgency="high", priority="low"),
+            [],
+        )
+
+        # Category comparison is case-insensitive against the canonical value.
+        # T002 is titled "Network printer jam" but its category is Hardware, so
+        # only T001 matches the Network filter.
+        self.assertEqual(
+            [t["id"] for t in TicketSearch.search(tickets, category="network")],
+            ["T001"],
+        )
+
+        # A title filter and a category filter combine with AND, not OR.
+        self.assertEqual(
+            TicketSearch.search(tickets, query="printer", category="Network"),
+            [],
+        )
+        self.assertEqual(
+            [t["id"] for t in TicketSearch.search(tickets, query="printer", category="Hardware")],
+            ["T002"],
+        )
+
+        # An unknown filter name is reported, not silently ignored.
+        with self.assertRaises(ValueError):
+            TicketSearch.search(tickets, urgencyy="high")
+
+    # 10. Empty report returns 0%, no crash
+    def test_10_empty_report_safety(self):
+        report = TicketReports(self.manager.list_all_tickets())
+
+        self.assertEqual(report.total, 0)
+        self.assertEqual(report.resolution_percentage(), 0.0)
+        self.assertEqual(report.unresolved_count(), 0)
+
+        # Every valid status is still reported, defaulting to zero.
+        self.assertEqual(
+            report.count_by_status(),
+            {"open": 0, "in_progress": 0, "resolved": 0},
+        )
+
+        # generate() is safe on an empty fixture too.
+        self.assertEqual(report.generate()["resolution_percentage"], 0.0)
+
+    # 11. Report counts agree with known fixture after resolve/reopen
+    def test_11_report_counts_fixture_sync(self):
+        self.manager.create_ticket("T1", "Network", "high", 10)
+        self.manager.create_ticket("T2", "Software", "low", 2)
+        self.manager.assign_ticket("T001", "Alice")
+        self.manager.update_workflow("T001", "in_progress")
+        self.manager.update_workflow("T001", "resolved")
+
+        report = TicketReports(self.manager.list_all_tickets())
+        self.assertEqual(report.total, 2)
+        self.assertEqual(report.count_by_status()["resolved"], 1)
+        self.assertEqual(report.count_by_status()["open"], 1)
+        self.assertEqual(report.resolution_percentage(), 50.0)
+
+        # Reopening moves the ticket back and the report follows.
+        self.manager.update_workflow("T001", "open")
+        reopened = TicketReports(self.manager.list_all_tickets())
+        self.assertEqual(reopened.count_by_status()["resolved"], 0)
+        self.assertEqual(reopened.count_by_status()["open"], 2)
+        self.assertEqual(reopened.resolution_percentage(), 0.0)
+
+        # Report totals always agree with the live ticket list.
+        self.assertEqual(reopened.total, len(self.manager.list_all_tickets()))
+
     # 12. Saving/loading preserves notes and next IDs
     def test_12_persistence_and_note_roundtrip(self):
         self.manager.create_ticket("Persist Notes", "Software", "medium", 5)
@@ -160,8 +264,8 @@ class TestCampusFlowNext(unittest.TestCase):
         self.assertEqual(wrong_root.list_all_tickets(), [])
 
         # A failed save must roll the in-memory change back, leaving memory
-        # consistent with what is on disk. Each mutator restores the value it
-        # replaced.
+        # consistent with what is on disk (README: rollback on persistence
+        # failure). Each mutator restores the value it replaced.
         manager = TicketManager(
             filepath=os.path.join(self.tmpdir, "fresh.json"), silent_load=True
         )
@@ -191,6 +295,29 @@ class TestCampusFlowNext(unittest.TestCase):
         self.assertFalse(success)
         self.assertEqual(manager.get_ticket("T001")["notes"], [])
 
+    # 14. CLI understanding check scoring
+    def test_14_cli_understanding_check_scoring(self):
+        answers = {1: "B", 2: "C", 3: "B", 4: "C", 5: "C", 6: "B"}
+        score, results = EngineeringQuiz.grade_quiz(answers)
+        self.assertEqual(score, 6)
+        self.assertEqual(len(results), 6)
+        self.assertTrue(all(r["correct"] for r in results))
+
+        # Invalid choices are rejected rather than counted as wrong answers.
+        self.assertFalse(EngineeringQuiz.is_valid_choice("Z"))
+        self.assertFalse(EngineeringQuiz.is_valid_choice(""))
+
+        score, results = EngineeringQuiz.grade_quiz({1: "Z", 2: "C", 3: "B", 4: "C", 5: "C", 6: "B"})
+        self.assertEqual(score, 5)
+        invalid = [r for r in results if not r["valid_choice"]]
+        self.assertEqual(len(invalid), 1)
+        self.assertEqual(invalid[0]["question"], 1)
+        self.assertIsNone(invalid[0]["choice"])
+
+        # Answers are case- and whitespace-insensitive.
+        score, _ = EngineeringQuiz.grade_quiz({1: " b ", 2: "c", 3: "B", 4: "C", 5: "C", 6: "B"})
+        self.assertEqual(score, 6)
+
     # BUG-HUNTER A: Note ID continuity on reload
     def test_bug_hunter_a_note_id_continuity(self):
         self.manager.create_ticket("Bug A", "Hardware", "low", 2)
@@ -207,6 +334,10 @@ class TestCampusFlowNext(unittest.TestCase):
         ticket = self.manager.get_ticket("T001")
         # Canonical normalization stores "Network" regardless of lowercase input "network"
         self.assertEqual(ticket["category"], "Network")
+
+        # The stored canonical value is what search must match against.
+        results = TicketSearch.search(self.manager.list_all_tickets(), category="NETWORK")
+        self.assertEqual([t["id"] for t in results], ["T001"])
 
 
 if __name__ == "__main__":

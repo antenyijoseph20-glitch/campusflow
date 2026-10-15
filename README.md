@@ -38,12 +38,15 @@ The project is also a practical demonstration of Python application design, obje
 - **Priority calculation:** Determine ticket priority from urgency and the number of affected users.
 - **Staff assignment:** Assign tickets to responsible staff members.
 - **Workflow management:** Control ticket status transitions.
+- **Notes:** Attach follow-up notes to a ticket with per-ticket note IDs.
+- **Search:** Case-insensitive substring search on titles, combined with category, status, urgency, and priority filters using strict logical AND.
 - **Workload management:** Organize tickets into work queues.
-- **Reporting:** Review ticket and workload information.
+- **Reporting:** Review ticket totals, status and priority breakdowns, and resolution percentage.
 - **JSON persistence:** Store ticket records locally between application runs.
 - **Safer file updates:** Use atomic file replacement when saving data.
-- **Failure handling:** Protect in-memory ticket state when supported operations fail to persist.
-- **Automated tests:** Test models, validation, storage, persistence, and workflow behavior.
+- **Failure handling:** Roll back the in-memory change when a save fails, so memory never diverges from disk.
+- **Engineering check:** A short multiple-choice quiz covering the rules the system enforces.
+- **Automated tests:** Test models, validation, storage, persistence, search, reporting, and workflow behavior.
 
 ## Technology Stack
 
@@ -62,28 +65,34 @@ campusflow/
 │   └── campus_flow/
 │       ├── __init__.py
 │       ├── cli.py
-│       ├── manager.py
 │       ├── models.py
+│       ├── quiz.py
+│       ├── search_reports.py
 │       └── storage.py
 ├── tests/
 │   ├── __init__.py
-│   ├── test_storage.py
-│   ├── test_tickets.py
-│   └── test_workflow.py
+│   └── test_campusflow_next.py
+├── baseline-check.md
+├── learning_note.md
 ├── main.py
 ├── pyproject.toml
-├── tickets.json
 └── README.md
 ```
 
+`tickets.json` is created in the working directory on first use and is not
+tracked by Git.
+
 ### Module responsibilities
 
-- `models.py` — Defines ticket data, validation rules, and priority-related logic.
-- `manager.py` — Implements ticket-management operations and workflow rules.
-- `storage.py` — Handles JSON persistence, data validation during loading, and safe file updates.
+- `models.py` — Defines `TicketManager`: ticket data, validation rules, workflow guards, notes, and priority logic.
+- `storage.py` — Handles JSON persistence, data validation during loading, and atomic file updates.
+- `search_reports.py` — Provides `TicketSearch` (case-insensitive multi-filter search) and `TicketReports` (aggregate reporting).
+- `quiz.py` — Provides the Engineering Understanding Check question bank and grader.
 - `cli.py` — Provides the command-line interface for interacting with the application.
 - `main.py` — Serves as the application entry point.
-- `tests/` — Contains automated tests for ticket behavior, workflows, and persistence.
+- `tests/` — Contains the automated test suite.
+- `baseline-check.md` — Records the initial audit, reproduced defects, and remediation.
+- `learning_note.md` — Quiz explanations and mentor discussion points.
 - `docs/design-decisions.md` — Records important technical decisions.
 - `docs/ai-learning-log.md` — Documents learning, experimentation, and verification.
 
@@ -150,9 +159,33 @@ From the project root, with the virtual environment activated, run:
 python main.py
 ```
 
+If the package has not been installed with `pip install -e .`, point Python at
+the source directory instead:
+
+```bash
+PYTHONPATH=src python main.py
+```
+
 Follow the on-screen menu to select an available operation.
 
-The application provides commands for managing tickets, assignments, workflows, queues, and reports. Available options depend on the current implementation.
+The application provides menus for creating and viewing tickets, assigning
+staff, updating workflow status, adding notes, searching tickets, viewing the
+work queue, and generating reports.
+
+### Example session
+
+```text
+Select an option (1-10): 1
+--- Create New Ticket ---
+Enter ticket title: Wi-Fi down in Block A
+Enter category: network
+Enter urgency: high
+Enter affected users (positive integer): 15
+Success! Created ticket T001 with priority 'critical'.
+```
+
+Note that the category is accepted case-insensitively and stored in canonical
+form as `Network`.
 
 ## Ticket Workflow
 
@@ -176,11 +209,57 @@ These rules help maintain consistent ticket state and make workflow behavior eas
 
 ## Data Storage
 
-CampusFlow uses a local JSON file for ticket persistence. The repository currently contains `tickets.json`.
+CampusFlow uses a local JSON file for ticket persistence. The file is created at
+the path passed to `TicketManager` (default `tickets.json`) and is excluded from
+version control.
 
-The storage implementation is designed to validate ticket data and reduce the risk of corrupting existing data during saves.
+### JSON format
 
-Where supported by the management operations, a failed persistence operation triggers rollback of the affected in-memory change.
+The file contains a single JSON array of ticket objects:
+
+```json
+[
+    {
+        "id": "T001",
+        "title": "Wi-Fi down in Block A",
+        "category": "Network",
+        "urgency": "high",
+        "affected_users": 15,
+        "priority": "critical",
+        "status": "open",
+        "assigned_to": null,
+        "notes": [
+            {
+                "note_id": "N001",
+                "author": "Mentor A",
+                "message": "Access point replaced and verified."
+            }
+        ]
+    }
+]
+```
+
+| Field | Type | Notes |
+|---|---|---|
+| `id` | string | Generated as `T` plus a zero-padded number. Must be unique. |
+| `title` | string | Non-blank. |
+| `category` | string | One of `Network`, `Hardware`, `Software`, `Other` (canonical form). |
+| `urgency` | string | One of `low`, `medium`, `high`. |
+| `affected_users` | integer | Positive; booleans and decimals are rejected. |
+| `priority` | string | Derived: `critical`, `high`, `medium`, or `low`. |
+| `status` | string | One of `open`, `in_progress`, `resolved`. |
+| `assigned_to` | string or null | `null` while unassigned. |
+| `notes` | array | Each entry has `note_id`, `author`, and `message`. |
+
+### Loading and saving
+
+On load, the file must parse as JSON and its root must be an array. Records
+without an `id`, and duplicate IDs, cause the load to be rejected; the manager
+then starts from an empty list rather than exposing corrupt data.
+
+Saving writes the full document to a temporary file and then atomically replaces
+the target, so a failed write cannot truncate existing data. If a save fails,
+the in-memory change is rolled back to its previous value.
 
 **Important:** JSON file persistence is appropriate for a learning project or a small local tool. It is not a substitute for a database with concurrency control, access management, backups, and operational monitoring in a multi-user production environment.
 
@@ -191,10 +270,21 @@ Before manually editing or deleting `tickets.json`, make a backup if its content
 Run the automated test suite from the repository root:
 
 ```bash
-python -m pytest -v
+PYTHONPATH=src python -m unittest discover -s tests -v
 ```
 
+`PYTHONPATH=src` is required because the package lives under `src/`: `unittest`
+does not read the `pythonpath` setting in `pyproject.toml`. The prefix is
+unnecessary once the package has been installed with `pip install -e .`.
+
 Run the tests in quiet mode:
+
+```bash
+PYTHONPATH=src python -m unittest discover -s tests -q
+```
+
+The suite is written with `unittest` and also runs under `pytest`, which reads
+the source path from `pyproject.toml` and therefore needs no prefix:
 
 ```bash
 python -m pytest -q
@@ -214,16 +304,24 @@ git diff --check
 
 ### Test coverage areas
 
-The test suite includes checks for:
+The suite contains the 16 required verification cases: 14 numbered cases plus
+two bug-hunter checks.
 
-- Ticket creation and field validation.
-- Priority and ticket-data consistency.
-- Invalid ticket data loaded from JSON.
-- Storage behavior and persistence.
-- Workflow transitions and assignment requirements.
-- Handling of persistence failures.
+- Priority rule precedence, including the `critical` boundary.
+- The unassigned ticket guard and the resolved ticket lock.
+- Strict validation of `affected_users` (zero, negative, decimal, boolean, text).
+- Note addition, note ID assignment, and rejected notes not consuming an ID.
+- Reopening a resolved ticket so that notes are accepted again.
+- Case-insensitive substring search and multi-filter AND search.
+- Empty-dataset reporting without a division-by-zero crash.
+- Report counts staying in step with the ticket list after resolve/reopen.
+- JSON round-trip of tickets, notes, and next IDs.
+- Rejection of malformed JSON, a non-array root, and duplicate ticket IDs.
+- Rollback of in-memory state when a save fails.
+- Engineering Understanding Check scoring and rejection of invalid choices.
 
-Run the tests after making changes and before opening a pull request. Report the actual results rather than claiming that a check passed without running it.
+Run the tests after making changes and before opening a pull request. Report the
+actual results rather than claiming that a check passed without running it.
 
 ## Design and Learning Documentation
 
@@ -231,6 +329,8 @@ CampusFlow includes documentation describing technical decisions and the develop
 
 - [`docs/design-decisions.md`](docs/design-decisions.md)
 - [`docs/ai-learning-log.md`](docs/ai-learning-log.md)
+- [`baseline-check.md`](baseline-check.md) — the initial audit, reproduced defects, and remediation.
+- [`learning_note.md`](learning_note.md) — quiz explanations and mentor discussion points.
 
 These records help explain why design choices were made, how behavior was verified, and what was learned during implementation.
 
@@ -245,7 +345,7 @@ CampusFlow is currently a local command-line application.
 
 These limitations are intentional areas for future development, not features that should be assumed to exist.
 
-## Potential Future Enhancements
+## Future Improvements
 
 The following improvements may be considered as CampusFlow evolves. They are not requirements for the current implementation.
 
@@ -259,7 +359,7 @@ The following improvements may be considered as CampusFlow evolves. They are not
 
 Future changes should be driven by demonstrated needs and introduced incrementally, with appropriate tests and documentation.
 
-## Contributing.
+## Contributing
 
 Contributions, code reviews, and suggestions are welcome.
 
@@ -273,7 +373,7 @@ Contributions, code reviews, and suggestions are welcome.
 Example validation commands:
 
 ```bash
-python -m pytest -v
+PYTHONPATH=src python -m unittest discover -s tests -v
 python -m compileall -q src tests
 git diff --check
 ```
