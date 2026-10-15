@@ -383,14 +383,14 @@ the status breakdown. Only the queue drops them.
 Use this checklist when performing a project review. Mark items only after running the corresponding checks. The marks below record the most recent full review; clear them when starting the next one.
 
 - [x] Run the full test suite and record the actual result. — 51 tests, `OK`. The suite grew from 38 to 51 with the queue filter, the report figures, the load-time value checks and the new menus: 9 model cases, 7 storage, 7 search and reporting, 1 quiz, 26 CLI and 1 entry-point. This run was made on `feat/22-search-and-insights` after rebasing onto `main` with the validation work merged, so it is the first run in which both engineers' changes are present together.
-- [ ] Compile the application and test files. — **Cleared.** The previous pass reported no errors, but that was against the revision before the queue filter, the report figures and the load-time checks landed. Re-run `python3 -m compileall -q src tests` and record it here before ticking.
-- [ ] Check the Git diff for whitespace errors. — **Cleared** for the same reason; the earlier `git diff --check` run predates this revision.
+- [x] Compile the application and test files. — `python3 -m compileall -q src tests` reported no errors, run on the revision that has both engineers' work in it.
+- [x] Check the Git diff for whitespace errors. — `git diff --check main...HEAD` reported one defect first: a blank line left at the end of `baseline-check.md` by an edit to the review section. It was removed in `46d54fb` and the check then reported none. Worth recording that it found something, because the item above it had passed on an earlier revision and would have hidden this one.
 - [x] Test invalid ticket input and workflow transitions. — cases 2, 4, 6 and 14, plus the CLI workflow cases.
 - [x] Test storage failures and state rollback. — case 13, including a save stubbed to fail for every mutator.
 - [x] Verify installation and execution instructions. — the suite passes both from an uninstalled checkout and against `pip install -e .`.
 - [x] Review documentation for unsupported claims. — D7, D10, D11 and D13 corrected; D16 closed. The third review reversed two of those corrections: `design-decisions.md` §3 previously defended the validation gap recorded as D19, and the quiz bank did not ask the questions D20 describes. Both documents now follow the code.
 
-One item is not covered by anything above: the exit status of the `python3 main.py` menu itself, which is exercised only through its handlers rather than as a subprocess.
+The `python3 main.py` menu is now covered as a subprocess as well as through its handlers: `printf '1\nSmoke test ticket\nNetwork\nhigh\n15\n2\n13\n' | PYTHONPATH=src python3 main.py` created T001, listed it back as `critical`, and exited on 13 without a traceback. The `PYTHONPATH=src` prefix is what the README documents for a checkout that has not been installed — without it the script stops at `ModuleNotFoundError: No module named 'campus_flow'`, which is the `src/` layout working as configured rather than a defect. What that run does not establish is the exit status as a value: the output above is a pipeline, so the status observed was `tail`'s.
 
 Example commands:
 
