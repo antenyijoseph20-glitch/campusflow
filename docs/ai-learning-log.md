@@ -325,15 +325,17 @@ a value that is not an option".
 
 ## Current Verification Checklist
 
-Use this checklist when performing a project review. Mark items only after running the corresponding checks.
+Use this checklist when performing a project review. Mark items only after running the corresponding checks. The marks below record the most recent full review; clear them when starting the next one.
 
-- [ ] Run the full test suite and record the actual result.
-- [ ] Compile the application and test files.
-- [ ] Check the Git diff for whitespace errors.
-- [ ] Test invalid ticket input and workflow transitions.
-- [ ] Test storage failures and state rollback.
-- [ ] Verify installation and execution instructions.
-- [ ] Review documentation for unsupported claims.
+- [x] Run the full test suite and record the actual result. — 39 tests, `OK`: 16 required cases, 21 CLI cases and 2 entry-point cases. This run is the first to include `tests/test_main.py`, so it also confirms the repository-root entry in `tests/base.py` puts `main.py` on the import path before that module imports it.
+- [x] Compile the application and test files. — `compileall` reported no errors. The suite importing every module, `test_main.py` included, is independent evidence that each one parses.
+- [x] Check the Git diff for whitespace errors. — `git diff --check` reported none.
+- [x] Test invalid ticket input and workflow transitions. — cases 2, 4, 6 and 14, plus the CLI workflow cases.
+- [x] Test storage failures and state rollback. — case 13, including a save stubbed to fail for every mutator.
+- [x] Verify installation and execution instructions. — the suite passes both from an uninstalled checkout and against `pip install -e .`.
+- [x] Review documentation for unsupported claims. — D7, D10, D11 and D13 corrected; D16 closed.
+
+One item is not covered by anything above: the exit status of the `python3 main.py` menu itself, which is exercised only through its handlers rather than as a subprocess.
 
 Example commands:
 

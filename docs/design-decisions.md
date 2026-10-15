@@ -41,10 +41,18 @@ The suite is split by the module it exercises — `test_models.py`,
 The case numbers in the test names are the contract, so they survive the split
 unchanged even though the tests now live in four files.
 
+`tests/test_cli.py` sits outside that contract. It covers the menu layer, which
+the numbered cases never reached, by patching `input()` and capturing stdout.
+`tests/test_main.py` covers the entry point the same way. Those tests are named
+for what they check rather than numbered, so the distinction between required
+coverage and added coverage stays visible.
+
 `tests/base.py` holds what every test needs: the temporary directory and data
-file, the manager built over it, and the `src/` import bootstrap. Discovery
-matches `test*.py`, so `base.py` is imported by the test modules but never
-collected as one.
+file, the manager built over it, and the import bootstrap. Discovery inserts
+`tests/` but not the package directories, so the bootstrap puts both `src/` and
+the repository root on `sys.path` — `src/` first, so the application package
+resolves, and the root so `main.py` is importable. Discovery matches `test*.py`,
+so `base.py` is imported by the test modules but never collected as one.
 
 Each test uses its own temporary directory, so no test data is written into the
 repository.

@@ -21,11 +21,15 @@ import sys
 import tempfile
 import unittest
 
-_SRC = os.path.join(
-    os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "src"
-)
-if _SRC not in sys.path:
-    sys.path.insert(0, _SRC)
+_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+_SRC = os.path.join(_ROOT, "src")
+
+# src/ goes on first so the application package resolves; the repository root
+# goes on too so that main.py can be imported the way `python3 main.py` reaches
+# it, since discovery inserts tests/ but neither of these.
+for _path in (_ROOT, _SRC):
+    if _path not in sys.path:
+        sys.path.insert(0, _path)
 
 from campus_flow.models import TicketManager  # noqa: E402
 

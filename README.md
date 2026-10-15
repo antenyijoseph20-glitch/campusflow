@@ -98,6 +98,8 @@ campusflow/
 ├── tests/
 │   ├── __init__.py
 │   ├── base.py
+│   ├── test_cli.py
+│   ├── test_main.py
 │   ├── test_models.py
 │   ├── test_quiz.py
 │   ├── test_search_reports.py
@@ -378,6 +380,28 @@ two bug-hunter checks.
 
 Run the tests after making changes and before opening a pull request. Report the
 actual results rather than claiming that a check passed without running it.
+
+### Beyond the required cases
+
+`tests/test_cli.py` covers the menu layer, which the 16 required cases do not
+reach. It patches `input()` with a fixed sequence of answers and captures
+stdout, so each handler runs its real code path: the input helpers, the table
+renderer on an empty and a non-string row, every workflow branch (open,
+resolved-and-declined, resolved-and-confirmed, missing ticket), the create,
+view, list, search, report and work-queue handlers, and the menu loop's exit and
+invalid-choice paths.
+
+The workflow is checked at both layers on purpose. The menu offers only the legal
+next status, and the model refuses an illegal one even when the user types it
+anyway — the rule belongs to `TicketManager`, not to the prompt.
+
+`tests/test_main.py` covers the entry point: that `main()` builds the CLI and
+runs it, and that importing the module does not start the menu.
+
+Every module under `src/campus_flow/` and the `main.py` entry point now has a
+test file of its own. A prompt string is passed to `input()` rather than printed,
+so it never appears in captured stdout — check one through the input mock, not
+the output.
 
 ## Design and Learning Documentation
 
