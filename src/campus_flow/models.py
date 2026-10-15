@@ -9,7 +9,10 @@ class TicketManager:
     VALID_STATUSES = {"open", "in_progress", "resolved"}
 
     def __init__(self, filepath="tickets.json", silent_load=False):
-        self.storage = StorageManager(filepath)
+        # The priority rule goes to storage so that a loaded record whose stored
+        # priority contradicts its own urgency and affected_users is rejected,
+        # without the rule being written down in two places.
+        self.storage = StorageManager(filepath, priority_rule=self.calculate_priority)
         loaded = self.storage.load_tickets(silent=silent_load)
         # If load failed due to corruption/duplicates, fallback to empty list to protect memory
         self.tickets = loaded if loaded is not None else []
@@ -198,9 +201,15 @@ class TicketManager:
         return True, f"Success! Added note {note_id}."
 
     def get_work_queue(self):
-        """Unresolved tickets ordered by priority weight, then numeric ID."""
+        """Open tickets only, ordered by priority weight, then numeric ID.
+
+        The queue is what still needs picking up, so only ``open`` tickets are
+        in it. A ticket that has moved to ``in_progress`` is already being
+        worked on and has left the queue; it remains visible through the list,
+        search and reporting views.
+        """
         priority_weights = {"critical": 0, "high": 1, "medium": 2, "low": 3}
-        unresolved = [t for t in self.tickets if t["status"] in ("open", "in_progress")]
+        queue = [t for t in self.tickets if t["status"] == "open"]
 
         def sort_key(ticket):
             weight = priority_weights.get(ticket.get("priority"), 4)
@@ -208,4 +217,4 @@ class TicketManager:
             numeric_id = int(raw_id[1:]) if raw_id[1:].isdigit() else 0
             return weight, numeric_id
 
-        return sorted(unresolved, key=sort_key)
+        return sorted(queue, key=sort_key)

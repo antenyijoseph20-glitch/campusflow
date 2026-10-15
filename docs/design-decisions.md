@@ -22,16 +22,33 @@ Tickets are stored as JSON. Saving uses a temporary file followed by
 replacement of the target file to reduce the risk of truncating existing
 data during a failed save.
 
-Loading validates the shape of the document before accepting it: the root must
-be an array, each entry must be an object carrying all nine ticket fields, and
-IDs must be present and unique. A document that fails any of these is rejected
-whole. Rejecting the entire file rather than skipping bad records keeps the
-in-memory list a faithful copy of the file, so no caller can observe a partial
-load without knowing it.
+Loading validates the document before accepting any of it. Structure first: the
+root must be an array, each entry must be an object carrying all nine ticket
+fields, and IDs must be present and unique. Then values: the title must be
+non-blank, `category`, `urgency`, `priority` and `status` must each be one of
+the canonical values the application writes, `affected_users` must be a positive
+integer (with `bool` rejected explicitly, since it is a subclass of `int`),
+`assigned_to` must be null or a non-blank name, and each note must be a
+three-field object whose message is within the same 5–300 character bounds
+`add_note` enforces, with note IDs unique inside their ticket. A document that
+fails any check is rejected whole.
 
-This validates structure, not values. A record with a well-formed but illegal
-`status` (say `"closed"`) loads successfully, because deciding which values are
-legal belongs to `TicketManager`, not to the storage layer.
+This validates values as well as structure. An earlier version of this section
+argued the opposite — that deciding which values are legal belongs to
+`TicketManager`, not to storage, so a record with a well-formed but illegal
+`status` was loaded without complaint. That argument does not survive contact
+with the failure it produces: the manager would accept the record, count it in
+every report, and offer it in the queue, in a state no code path in the
+application can create or transition out of. A ticket that cannot be produced
+and cannot be advanced is corrupt data, not a caller's business rule, and the
+load boundary is where it can still be told apart from a legitimate record.
+
+The one rule that could not be decided locally is `priority`, because it is
+derived rather than chosen. `StorageManager` therefore takes an optional
+`priority_rule` callable and `TicketManager` passes its own
+`calculate_priority` in. The rule is stated once, in the class that owns it, and
+storage only checks that the stored value agrees with it. Called directly with
+no rule, that check is skipped and the rest of the validation still applies.
 
 ## 4. Automated tests
 
@@ -100,4 +117,41 @@ now derives each letter from the behaviour the question asks about and fails if
 the stored key disagrees, so a wrong key can no longer pass. The second limit
 remains: search was exercised only at the scale of the test fixtures, not
 against large ticket sets.
+
+## 8. The work queue holds open tickets only
+
+`get_work_queue` returns `open` tickets, ordered by priority weight and then by
+numeric ID.
+
+It previously returned `open` and `in_progress` together, described as the
+unresolved tickets. The distinction matters because the two states answer
+different questions: the queue is the list of what still needs picking up, and a
+ticket that has moved to `in_progress` has already been picked up. Including it
+made the queue grow with work already underway and stop being a queue.
+
+Nothing became invisible when the filter narrowed. In-progress tickets are still
+in `list_all_tickets`, still match a search for `status=in_progress`, and are
+still counted in the report's status breakdown; only the queue drops them.
+
+The ordering is `(priority weight, numeric ID)`, not `(priority weight, ID)`.
+Sorting the ID as text would place `T010` before `T009`; the numeric form is why
+the sort key parses the digits out of the ID and falls back to `0` for an ID that
+does not have the expected shape. `search_reports.sort_by_priority` exposes the
+same ordering so the sorted search view and the queue cannot drift apart.
+
+## 9. Dependency injection for one derived value
+
+`StorageManager` takes an optional `priority_rule` callable rather than
+importing `TicketManager` or restating the rule. The alternatives were both
+worse: `storage` importing `models` would invert the layering and create a cycle,
+since `models` already imports `storage`; copying the four-branch rule into
+`storage` would leave two copies to keep in agreement, and the failure mode of
+them disagreeing is a validator that rejects valid files or accepts invalid
+ones.
+
+Injecting it keeps the rule in the class that owns it and gives storage exactly
+what it needs to check the stored value. The parameter is optional, so
+`StorageManager` used on its own still validates structure and every value
+except the derived one.
+
 

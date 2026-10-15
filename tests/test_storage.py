@@ -114,3 +114,96 @@ class TestStorage(CampusFlowTestCase):
         manager_2.add_note("T001", "Dev", "Note two.")
         ticket = manager_2.get_ticket("T001")
         self.assertEqual(ticket["notes"][1]["note_id"], "N002")
+
+    def write_record(self, **overrides):
+        """Write one otherwise-valid record with the given fields replaced."""
+        record = {
+            "id": "T001",
+            "title": "Baseline",
+            "category": "Network",
+            "urgency": "low",
+            "affected_users": 1,
+            "priority": "low",
+            "status": "open",
+            "assigned_to": None,
+            "notes": [],
+        }
+        record.update(overrides)
+        with open(self.test_file, "w", encoding="utf-8") as handle:
+            json.dump([record], handle)
+        return record
+
+    def test_load_accepts_a_record_the_application_could_have_written(self):
+        """The baseline the rejection cases below are measured against."""
+        self.write_record()
+        self.assertEqual(len(self.reload_manager().list_all_tickets()), 1)
+
+    def test_load_rejects_values_the_application_cannot_produce(self):
+        """Structure was already checked; this is the values inside it."""
+        cases = {
+            "illegal status": {"status": "finished"},
+            "illegal category": {"category": "Printing"},
+            "uncanonical category": {"category": "network"},
+            "illegal urgency": {"urgency": "urgent"},
+            "illegal priority": {"priority": "blocker"},
+            "uppercase urgency": {"urgency": "LOW"},
+            "blank title": {"title": "   "},
+            "non-string title": {"title": 42},
+            "zero users": {"affected_users": 0},
+            "boolean users": {"affected_users": True},
+            "users as text": {"affected_users": "1"},
+            "blank assignee": {"assigned_to": "  "},
+            "assignee is a number": {"assigned_to": 7},
+            "notes not a list": {"notes": {}},
+            "note is not an object": {"notes": ["N001"]},
+            "note missing author": {
+                "notes": [{"note_id": "N001", "message": "Long enough message."}]
+            },
+            "note message too short": {
+                "notes": [{"note_id": "N001", "author": "Dev", "message": "hi"}]
+            },
+            "blank note author": {
+                "notes": [{"note_id": "N001", "author": " ", "message": "Long enough."}]
+            },
+            "duplicate note ID": {
+                "notes": [
+                    {"note_id": "N001", "author": "Dev", "message": "First message."},
+                    {"note_id": "N001", "author": "Dev", "message": "Second message."},
+                ]
+            },
+        }
+
+        for label, overrides in cases.items():
+            with self.subTest(case=label):
+                self.write_record(**overrides)
+                self.assertEqual(
+                    self.reload_manager().list_all_tickets(),
+                    [],
+                    f"a record with an {label} was loaded",
+                )
+
+    def test_load_rejects_a_priority_that_contradicts_its_own_inputs(self):
+        """Priority is derived, so a stored value that disagrees is corrupt.
+
+        Urgency 'high' with 15 users derives 'critical'; the rest of the record
+        is valid, so only the derivation can cause the rejection.
+        """
+        self.write_record(urgency="high", affected_users=15, priority="low")
+        self.assertEqual(self.reload_manager().list_all_tickets(), [])
+
+        # The same inputs with the derived priority load cleanly, which shows
+        # the rejection above came from the contradiction and not from the
+        # urgency or the count.
+        self.write_record(urgency="high", affected_users=15, priority="critical")
+        self.assertEqual(len(self.reload_manager().list_all_tickets()), 1)
+
+    def test_a_rejected_load_leaves_a_usable_manager(self):
+        """Rejection starts empty rather than raising, and writes still work."""
+        self.write_record(status="finished")
+
+        manager = self.reload_manager()
+        self.assertEqual(manager.list_all_tickets(), [])
+
+        created, message = manager.create_ticket("Fresh start", "Other", "low", 1)
+        self.assertTrue(created, message)
+        self.assertEqual(len(self.reload_manager().list_all_tickets()), 1)
