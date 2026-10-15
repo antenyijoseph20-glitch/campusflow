@@ -1,6 +1,7 @@
 import json
 import os
 
+
 class StorageManager:
     """Handles safe, atomic JSON file persistence and schema validation."""
 
@@ -26,20 +27,20 @@ class StorageManager:
         """Loads and validates tickets from disk. Rejects corrupted data without crashing."""
         if not os.path.exists(self.filepath):
             return []
-        
+
         try:
             with open(self.filepath, "r", encoding="utf-8") as f:
                 content = f.read().strip()
                 if not content:
                     return []
-                
+
                 data = json.loads(content)
                 # Edge case: JSON root must be a list
                 if not isinstance(data, list):
                     if not silent:
                         print("Error: JSON root is not a list. Load rejected.")
                     return None
-                
+
                 # Edge case: every record must be an object with the required
                 # fields, and IDs must be present and unique.
                 validated_tickets = []

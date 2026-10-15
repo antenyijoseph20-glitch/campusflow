@@ -84,6 +84,9 @@ The project is also a practical demonstration of Python application design, obje
 
 ```text
 campusflow/
+├── .github/
+│   └── workflows/
+│       └── checks.yml
 ├── docs/
 │   ├── ai-learning-log.md
 │   └── design-decisions.md
@@ -104,6 +107,7 @@ campusflow/
 │   ├── test_quiz.py
 │   ├── test_search_reports.py
 │   └── test_storage.py
+├── .gitignore
 ├── baseline-check.md
 ├── learning_note.md
 ├── main.py
@@ -130,13 +134,17 @@ tracked by Git.
 - `learning_note.md` — Quiz explanations and mentor discussion points.
 - `docs/design-decisions.md` — Records important technical decisions.
 - `docs/ai-learning-log.md` — Documents learning, experimentation, and verification.
+- `.github/workflows/checks.yml` — Runs the suite and a compile check on Python 3.12, and runs the suite once more against an editable install.
+- `.gitignore` — Excludes bytecode, virtual environments, packaging metadata, and `tickets.json`.
 
 ## Getting Started
 
 ### Prerequisites
 
-- Python 3.8 or newer. The project is developed and tested on Python 3.12, and
-  declares `requires-python = ">=3.8"` in `pyproject.toml`.
+- Python 3.8 or newer, as declared by `requires-python = ">=3.8"` in
+  `pyproject.toml`. Every run so far has been on 3.12, which is what CI tests.
+  The source reads as 3.8-compatible and no more than that — treat 3.8 support
+  as unverified until it has been run somewhere.
 - Git.
 - A terminal or command-line environment.
 
@@ -398,7 +406,7 @@ next status, and the model refuses an illegal one even when the user types it
 anyway — the rule belongs to `TicketManager`, not to the prompt.
 
 `tests/test_main.py` covers the entry point: that `main()` builds the CLI and
-runs it, and that importing the module does not start the menu.
+runs it, with the CLI patched out.
 
 Every module under `src/campus_flow/` and the `main.py` entry point now has a
 test file of its own. A prompt string is passed to `input()` rather than printed,
@@ -437,8 +445,8 @@ The following improvements may be considered as CampusFlow evolves. They are not
 - Evaluate database storage if concurrent access or data volume justifies it.
 - Consider authentication and role-based access control if multi-user support is introduced.
 - Improve packaging and release workflows. Continuous integration is no longer on
-  this list: `.github/workflows/checks.yml` runs the suite on Python 3.8 and 3.12,
-  and once more against an editable install.
+  this list: `.github/workflows/checks.yml` runs the suite on Python 3.12, and once
+  more against an editable install.
 - Explore a web API or graphical interface if future requirements call for one.
 
 Future changes should be driven by demonstrated needs and introduced incrementally, with appropriate tests and documentation.

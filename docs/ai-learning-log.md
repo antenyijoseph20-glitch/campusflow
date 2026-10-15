@@ -327,7 +327,7 @@ a value that is not an option".
 
 Use this checklist when performing a project review. Mark items only after running the corresponding checks. The marks below record the most recent full review; clear them when starting the next one.
 
-- [x] Run the full test suite and record the actual result. — 39 tests, `OK`: 16 required cases, 21 CLI cases and 2 entry-point cases. This run is the first to include `tests/test_main.py`, so it also confirms the repository-root entry in `tests/base.py` puts `main.py` on the import path before that module imports it.
+- [x] Run the full test suite and record the actual result. — 39 tests, `OK`: 16 required cases, 21 CLI cases and 2 entry-point cases. That run also confirmed the repository-root entry in `tests/base.py` puts `main.py` on the import path before that module imports it. One entry-point case was later removed — an assertion on the `__main__` guard that read the source text instead of exercising behaviour — leaving 38.
 - [x] Compile the application and test files. — `compileall` reported no errors. The suite importing every module, `test_main.py` included, is independent evidence that each one parses.
 - [x] Check the Git diff for whitespace errors. — `git diff --check` reported none.
 - [x] Test invalid ticket input and workflow transitions. — cases 2, 4, 6 and 14, plus the CLI workflow cases.

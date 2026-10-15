@@ -1,5 +1,6 @@
 from campus_flow.storage import StorageManager
 
+
 class TicketManager:
     """Core business logic for ticket creation, validation, workflow, and notes."""
 
@@ -116,7 +117,7 @@ class TicketManager:
         """Assign ticket with resolved-lock guard."""
         if not isinstance(staff_name, str) or not staff_name.strip():
             return False, "Error: Staff name cannot be blank."
-        
+
         ticket = self.get_ticket(ticket_id)
         if not ticket:
             return False, f"Error: Ticket ID '{ticket_id}' not found."

@@ -4,6 +4,12 @@ name: checks
 # been installed. The suite has to put src/ on the import path itself, so if
 # that bootstrap breaks, this job fails rather than the reader finding out.
 #
+# Only 3.12 is tested. pyproject.toml declares ">=3.8", but nothing here has
+# ever run on 3.8: the source reads as 3.8-compatible and that is all that can
+# be said for it. A second leg that has never been observed to pass is a claim
+# wearing the costume of a check, so it is not in the matrix. Add it back when
+# a run on 3.8 can actually be observed.
+#
 # `git diff --check` is deliberately absent: on a clean checkout there is no
 # diff to check, so it would pass without testing anything. It stays a local
 # pre-commit step.
@@ -15,27 +21,15 @@ on:
 
 jobs:
   unittest:
-    name: unittest (Python ${{ matrix.python-version }})
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          # 3.12 is what the project is developed on.
-          - python-version: "3.12"
-            os: ubuntu-latest
-          # 3.8 is the floor pyproject.toml declares. Checked rather than
-          # assumed, so the README claim cannot drift. Older interpreter, so
-          # it runs on the older image.
-          - python-version: "3.8"
-            os: ubuntu-22.04
+    name: unittest (Python 3.12)
+    runs-on: ubuntu-latest
 
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/setup-python@v5
         with:
-          python-version: ${{ matrix.python-version }}
+          python-version: "3.12"
 
       - name: Show the interpreter
         run: python3 --version
